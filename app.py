@@ -43,15 +43,21 @@ authenticator = stauth.Authenticate(
 name, authentication_status, username = authenticator.login("main") 
 # Note: Newer versions also dropped the "Login" string argument here, so just pass "main"
 
-if authentication_status == False:
+# Render the login widget (it will automatically update st.session_state)
+try:
+    authenticator.login()
+except Exception as e:
+    st.error(e)
+
+# Check the session state for authentication status
+if st.session_state["authentication_status"] is False:
     st.error("Username/password is incorrect")
     st.stop()
-elif authentication_status == None:
+elif st.session_state["authentication_status"] is None:
     st.warning("Please enter your username and password")
     st.stop()
 
-
-# If authentication_status is True, the code continues below
+# If the code reaches here, authentication_status is True
 # -----------------------------------------
 # Main Application
 # -----------------------------------------
@@ -59,7 +65,10 @@ st.title("Project Cash Flow & Profitability Assessment")
 
 # Sidebar for Global Parameters & Logout
 with st.sidebar:
-    st.write(f"Welcome, **{name}**")
+    # Use session_state to get the user's name
+    st.write(f"Welcome, **{st.session_state['name']}**")
+    
+    # Render the logout button
     authenticator.logout("Log Out", "sidebar")
     
     st.header("Financial Parameters")
