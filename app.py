@@ -12,51 +12,36 @@ st.set_page_config(page_title="Project Cash Flow & Profitability", layout="wide"
 # -----------------------------------------
 # Secure Authentication Module (No YAML needed)
 # -----------------------------------------
+# 1. You can remove the 'preauthorized' section from your config dictionary
 config = {
     'credentials': {
         'usernames': {
             'admin': {
                 'email': 'admin@example.com',
                 'name': 'System Admin',
-                'password': 'PASTE_HASH_1_HERE'  # e.g., '$2b$12$xyz...'
+                'password': 'PASTE_HASH_1_HERE' 
             },
-            'founder_a': {
-                'email': 'founder@example.com',
-                'name': 'Founder A',
-                'password': 'PASTE_HASH_2_HERE'
-            },
-            'consultant_b': {
-                'email': 'consultant@example.com',
-                'name': 'Consultant B',
-                'password': 'PASTE_HASH_3_HERE'
-            },
-            'analyst_c': {
-                'email': 'analyst@example.com',
-                'name': 'Analyst C',
-                'password': 'PASTE_HASH_4_HERE'
-            }
+            # ... other users ...
         }
     },
     'cookie': {
         'expiry_days': 30,
-        'key': 'some_random_secret_string_here', # Make up a random string
+        'key': 'some_random_secret_string_here', 
         'name': 'project_cashflow_cookie'
-    },
-    'preauthorized': {
-        'emails': []
     }
 }
 
+# 2. Remove the 5th argument from the Authenticate function
 authenticator = stauth.Authenticate(
     config['credentials'],
     config['cookie']['name'],
     config['cookie']['key'],
-    config['cookie']['expiry_days'],
-    config['preauthorized']
+    config['cookie']['expiry_days']
 )
 
 # Render the login widget
-name, authentication_status, username = authenticator.login("Login", "main")
+name, authentication_status, username = authenticator.login("main") 
+# Note: Newer versions also dropped the "Login" string argument here, so just pass "main"
 
 if authentication_status == False:
     st.error("Username/password is incorrect")
