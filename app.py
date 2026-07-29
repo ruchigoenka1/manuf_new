@@ -1,10 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime
-import plotly.express as px
 import plotly.graph_objects as go
-import yaml
-from yaml.loader import SafeLoader
 import streamlit_authenticator as stauth
 
 # -----------------------------------------
@@ -13,11 +10,42 @@ import streamlit_authenticator as stauth
 st.set_page_config(page_title="Project Cash Flow & Profitability", layout="wide")
 
 # -----------------------------------------
-# Secure Authentication Module
+# Secure Authentication Module (No YAML needed)
 # -----------------------------------------
-# Load user credentials from the secure YAML file
-with open('config.yaml') as file:
-    config = yaml.load(file, Loader=SafeLoader)
+config = {
+    'credentials': {
+        'usernames': {
+            'admin': {
+                'email': 'admin@example.com',
+                'name': 'System Admin',
+                'password': 'PASTE_HASH_1_HERE'  # e.g., '$2b$12$xyz...'
+            },
+            'founder_a': {
+                'email': 'founder@example.com',
+                'name': 'Founder A',
+                'password': 'PASTE_HASH_2_HERE'
+            },
+            'consultant_b': {
+                'email': 'consultant@example.com',
+                'name': 'Consultant B',
+                'password': 'PASTE_HASH_3_HERE'
+            },
+            'analyst_c': {
+                'email': 'analyst@example.com',
+                'name': 'Analyst C',
+                'password': 'PASTE_HASH_4_HERE'
+            }
+        }
+    },
+    'cookie': {
+        'expiry_days': 30,
+        'key': 'some_random_secret_string_here', # Make up a random string
+        'name': 'project_cashflow_cookie'
+    },
+    'preauthorized': {
+        'emails': []
+    }
+}
 
 authenticator = stauth.Authenticate(
     config['credentials'],
@@ -27,7 +55,7 @@ authenticator = stauth.Authenticate(
     config['preauthorized']
 )
 
-# This renders the login widget automatically
+# Render the login widget
 name, authentication_status, username = authenticator.login("Login", "main")
 
 if authentication_status == False:
@@ -36,6 +64,7 @@ if authentication_status == False:
 elif authentication_status == None:
     st.warning("Please enter your username and password")
     st.stop()
+
 
 # If authentication_status is True, the code continues below
 # -----------------------------------------
