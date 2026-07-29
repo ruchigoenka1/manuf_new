@@ -10,28 +10,42 @@ import streamlit_authenticator as stauth
 st.set_page_config(page_title="Project Cash Flow & Profitability", layout="wide")
 
 # -----------------------------------------
-# Secure Authentication Module (No YAML needed)
+# Secure Authentication Module (v0.3.0+)
 # -----------------------------------------
-# 1. You can remove the 'preauthorized' section from your config dictionary
+# Define user credentials directly (Make sure to replace passwords with your generated hashes)
 config = {
     'credentials': {
         'usernames': {
             'admin': {
                 'email': 'admin@example.com',
                 'name': 'System Admin',
-                'password': 'PASTE_HASH_1_HERE' 
+                'password': 'PASTE_HASH_1_HERE'  # e.g., '$2b$12$xyz...'
             },
-            # ... other users ...
+            'founder_a': {
+                'email': 'founder@example.com',
+                'name': 'Founder A',
+                'password': 'PASTE_HASH_2_HERE'
+            },
+            'consultant_b': {
+                'email': 'consultant@example.com',
+                'name': 'Consultant B',
+                'password': 'PASTE_HASH_3_HERE'
+            },
+            'analyst_c': {
+                'email': 'analyst@example.com',
+                'name': 'Analyst C',
+                'password': 'PASTE_HASH_4_HERE'
+            }
         }
     },
     'cookie': {
         'expiry_days': 30,
-        'key': 'some_random_secret_string_here', 
+        'key': 'random_secret_signature_key_here', 
         'name': 'project_cashflow_cookie'
     }
 }
 
-# 2. Remove the 5th argument from the Authenticate function
+# Initialize the authenticator (No 'preauthorized' parameter)
 authenticator = stauth.Authenticate(
     config['credentials'],
     config['cookie']['name'],
@@ -40,17 +54,12 @@ authenticator = stauth.Authenticate(
 )
 
 # Render the login widget
-name, authentication_status, username = authenticator.login("main") 
-# Note: Newer versions also dropped the "Login" string argument here, so just pass "main"
-
-# Render the login widget (it will automatically update st.session_state)
-# 1. ONLY call the function, do not put variables and an equals sign before it
 try:
     authenticator.login()
 except Exception as e:
     st.error(e)
 
-# 2. Check the session state for authentication status
+# Check the session state for authentication status
 if st.session_state.get("authentication_status") is False:
     st.error("Username/password is incorrect")
     st.stop()
@@ -58,18 +67,14 @@ elif st.session_state.get("authentication_status") is None:
     st.warning("Please enter your username and password")
     st.stop()
 
-# If the code reaches here, authentication_status is True
 # -----------------------------------------
-# Main Application
+# Main Application (Only visible if logged in)
 # -----------------------------------------
 st.title("Project Cash Flow & Profitability Assessment")
 
 # Sidebar for Global Parameters & Logout
 with st.sidebar:
-    # Use session_state to get the user's name
-    st.write(f"Welcome, **{st.session_state['name']}**")
-    
-    # Render the logout button
+    st.write(f"Welcome, **{st.session_state.get('name', 'User')}**")
     authenticator.logout("Log Out", "sidebar")
     
     st.header("Financial Parameters")
@@ -143,6 +148,7 @@ with tab2:
     )
     
     if not payments_df.empty and total_project_value > 0:
+        # Calculate percentage using total value
         payments_df['% of Total'] = (payments_df['Value'] / total_project_value) * 100
         st.dataframe(payments_df.style.format({'% of Total': '{:.2f}%', 'Value': '${:,.2f}'}), use_container_width=True)
         
@@ -156,14 +162,17 @@ with tab3:
     if st.button("Calculate Profitability & Generate Cash Flow", type="primary"):
         events = []
         
+        # Consolidate Components
         for _, row in components_df.iterrows():
             if pd.notna(row['Cash Outflow Date']) and pd.notna(row['Cost']):
                 events.append({'Date': pd.to_datetime(row['Cash Outflow Date']), 'Amount': -row['Cost'], 'Type': 'Component'})
                 
+        # Consolidate Fixed Costs
         for _, row in fixed_costs_df.iterrows():
             if pd.notna(row['Date']) and pd.notna(row['Fixed Cost']):
                 events.append({'Date': pd.to_datetime(row['Date']), 'Amount': -row['Fixed Cost'], 'Type': 'Fixed Cost'})
                 
+        # Consolidate Payments (Inflows)
         for _, row in payments_df.iterrows():
             if pd.notna(row['Date']) and pd.notna(row['Value']):
                 events.append({'Date': pd.to_datetime(row['Date']), 'Amount': row['Value'], 'Type': 'Payment Inflow'})
@@ -174,27 +183,29 @@ with tab3:
             events_df = pd.DataFrame(events)
             events_df = events_df.sort_values('Date')
             
+            # Generate Daily Timeline
             start_date = events_df['Date'].min()
             end_date = events_df['Date'].max()
             date_range = pd.date_range(start=start_date, end=end_date)
             
             timeline_df = pd.DataFrame({'Date': date_range})
             
+            # Group events happening on the same day
             daily_events = events_df.groupby('Date')['Amount'].sum().reset_index()
             daily_events.rename(columns={'Amount': 'Daily Net Cash'}, inplace=True)
             
             timeline_df = pd.merge(timeline_df, daily_events, on='Date', how='left').fillna(0)
             
+            # Interest logic
             daily_interest_rate = (interest_rate_pct / 100) / 365
-            
             balances = []
             interest_charges = []
             running_balance = 0.0
             
             for index, row in timeline_df.iterrows():
                 running_balance += row['Daily Net Cash']
-                
                 daily_interest = 0.0
+                
                 if running_balance < 0:
                     daily_interest = running_balance * daily_interest_rate 
                 elif running_balance > 0 and earn_interest:
@@ -207,6 +218,7 @@ with tab3:
             timeline_df['Daily Interest'] = interest_charges
             timeline_df['Cumulative Interest'] = timeline_df['Daily Interest'].cumsum()
             
+            # KPI Calculations (Absolute values as preferred)
             total_inflows = events_df[events_df['Amount'] > 0]['Amount'].sum()
             total_outflows = abs(events_df[events_df['Amount'] < 0]['Amount'].sum())
             total_net_interest = timeline_df['Daily Interest'].sum()
@@ -214,17 +226,18 @@ with tab3:
             gross_profit = total_inflows - total_outflows
             net_profit = gross_profit + total_net_interest 
             
+            # KPI Display
             st.subheader("Project Profitability Assessment")
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("Total Inflows", f"${total_inflows:,.2f}")
             col2.metric("Total Outflows", f"${total_outflows:,.2f}")
             col3.metric("Net Interest Paid/Earned", f"${total_net_interest:,.2f}")
-            col4.metric("Net Project Profit", f"${net_profit:,.2f}", 
-                        delta=f"{(net_profit/total_inflows)*100:.1f}% Margin" if total_inflows else "0%")
+            col4.metric("Net Project Profit", f"${net_profit:,.2f}")
             
             st.markdown("---")
             st.subheader("Cash Flow Timeline")
             
+            # Blue-themed Plotly Chart
             fig = go.Figure()
             
             fig.add_trace(go.Scatter(
@@ -253,6 +266,7 @@ with tab3:
             
             st.plotly_chart(fig, use_container_width=True)
             
+            # Daily Ledger
             with st.expander("View Daily Financial Ledger"):
                 st.dataframe(timeline_df.style.format({
                     'Daily Net Cash': '${:,.2f}',
