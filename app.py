@@ -44,16 +44,17 @@ name, authentication_status, username = authenticator.login("main")
 # Note: Newer versions also dropped the "Login" string argument here, so just pass "main"
 
 # Render the login widget (it will automatically update st.session_state)
+# 1. ONLY call the function, do not put variables and an equals sign before it
 try:
     authenticator.login()
 except Exception as e:
     st.error(e)
 
-# Check the session state for authentication status
-if st.session_state["authentication_status"] is False:
+# 2. Check the session state for authentication status
+if st.session_state.get("authentication_status") is False:
     st.error("Username/password is incorrect")
     st.stop()
-elif st.session_state["authentication_status"] is None:
+elif st.session_state.get("authentication_status") is None:
     st.warning("Please enter your username and password")
     st.stop()
 
