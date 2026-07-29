@@ -22,7 +22,7 @@ config = {
                 'password': '$2b$12$9cTEuIxNy2EF8sjqI/EFUObtti2opTHNwgdYie.seoAQAKYBRaFj2'  # e.g., '$2b$12$xyz...'
             },
             'founder_a': {
-                'email': 'founder@example.com',
+                'email': 'ashu@ashu.com',
                 'name': 'Founder A',
                 'password': '$2b$12$vbwv5qGinnaPy8qFWUQiseu6kK1y4bHu7W2CIuKQkLgNf7BilXCz2'
             },
