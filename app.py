@@ -1,0 +1,258 @@
+import streamlit as st
+import pandas as pd
+import datetime
+import plotly.express as px
+import plotly.graph_objects as go
+
+# -----------------------------------------
+# Page Configuration & Styling
+# -----------------------------------------
+st.set_page_config(page_title="Project Cash Flow & Profitability", layout="wide")
+
+# -----------------------------------------
+# Authentication Module
+# -----------------------------------------
+def check_password():
+    """Simple session state authentication."""
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
+
+    if not st.session_state["password_correct"]:
+        st.title("Login")
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        if st.button("Log In"):
+            # Hardcoded credentials for demonstration
+            if username == "admin" and password == "admin123":
+                st.session_state["password_correct"] = True
+                st.rerun()
+            else:
+                st.error("Incorrect username or password.")
+        return False
+    return True
+
+if not check_password():
+    st.stop()
+
+# -----------------------------------------
+# Main Application
+# -----------------------------------------
+st.title("Project Cash Flow & Profitability Assessment")
+
+# Sidebar for Global Parameters
+with st.sidebar:
+    st.header("Financial Parameters")
+    total_project_value = st.number_input("Total Project Value", min_value=0.0, value=100000.0, step=1000.0)
+    interest_rate_pct = st.number_input("Annual Interest Rate (%)", min_value=0.0, value=12.0, step=0.5)
+    earn_interest = st.checkbox("Earn interest on positive balance?", value=False)
+    
+    st.markdown("---")
+    if st.button("Log Out"):
+        st.session_state["password_correct"] = False
+        st.rerun()
+
+# -----------------------------------------
+# Data Input Sections (Tabs)
+# -----------------------------------------
+tab1, tab2, tab3 = st.tabs(["Outflows (Costs)", "Inflows (Payments)", "Cash Flow & Profitability"])
+
+# TAB 1: Outflows
+with tab1:
+    st.subheader("Component Fulfillment")
+    
+    # Default empty dataframe for components
+    if "comp_df" not in st.session_state:
+        st.session_state.comp_df = pd.DataFrame(
+            columns=["Component", "Purchase Date", "Lead Time (Days)", "Credit Period (Days)", "Cost", "Cash Outflow Date"]
+        )
+        # Add a dummy row for UI clarity
+        st.session_state.comp_df.loc[0] = ["Raw Material A", datetime.date.today(), 14, 30, 15000.0, datetime.date.today() + datetime.timedelta(days=30)]
+
+    components_df = st.data_editor(
+        st.session_state.comp_df,
+        num_rows="dynamic",
+        column_config={
+            "Purchase Date": st.column_config.DateColumn("Purchase Date", format="YYYY-MM-DD"),
+            "Cash Outflow Date": st.column_config.DateColumn("Cash Outflow Date", format="YYYY-MM-DD"),
+            "Cost": st.column_config.NumberColumn("Cost", format="$%f", min_value=0.0)
+        },
+        use_container_width=True,
+        key="comp_editor"
+    )
+    
+    st.markdown("---")
+    st.subheader("Fixed Cost Contribution")
+    
+    if "fc_df" not in st.session_state:
+        st.session_state.fc_df = pd.DataFrame(columns=["Description", "Fixed Cost", "Date"])
+        st.session_state.fc_df.loc[0] = ["Overhead allocation", 5000.0, datetime.date.today()]
+
+    fixed_costs_df = st.data_editor(
+        st.session_state.fc_df,
+        num_rows="dynamic",
+        column_config={
+            "Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD"),
+            "Fixed Cost": st.column_config.NumberColumn("Fixed Cost", format="$%f", min_value=0.0)
+        },
+        use_container_width=True,
+        key="fc_editor"
+    )
+
+# TAB 2: Inflows
+with tab2:
+    st.subheader("Customer Payment Schedule")
+    st.info(f"Target Total Project Value: **${total_project_value:,.2f}**")
+    
+    if "pay_df" not in st.session_state:
+        st.session_state.pay_df = pd.DataFrame(columns=["Milestone/Day", "Date", "Value"])
+        st.session_state.pay_df.loc[0] = ["Advance Payment", datetime.date.today(), 25000.0]
+
+    payments_df = st.data_editor(
+        st.session_state.pay_df,
+        num_rows="dynamic",
+        column_config={
+            "Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD"),
+            "Value": st.column_config.NumberColumn("Absolute Value", format="$%f", min_value=0.0)
+        },
+        use_container_width=True,
+        key="pay_editor"
+    )
+    
+    # Calculate and display percentages safely
+    if not payments_df.empty and total_project_value > 0:
+        payments_df['% of Total'] = (payments_df['Value'] / total_project_value) * 100
+        st.dataframe(payments_df.style.format({'% of Total': '{:.2f}%', 'Value': '${:,.2f}'}), use_container_width=True)
+        
+        total_scheduled = payments_df['Value'].sum()
+        variance = total_project_value - total_scheduled
+        if variance != 0:
+            st.warning(f"Note: Total scheduled payments (${total_scheduled:,.2f}) differ from Total Project Value by ${variance:,.2f}.")
+
+# TAB 3: Cash Flow Logic & Profitability
+with tab3:
+    if st.button("Calculate Profitability & Generate Cash Flow", type="primary"):
+        # 1. Consolidate all cash events
+        events = []
+        
+        # Outflows: Components
+        for _, row in components_df.iterrows():
+            if pd.notna(row['Cash Outflow Date']) and pd.notna(row['Cost']):
+                events.append({'Date': pd.to_datetime(row['Cash Outflow Date']), 'Amount': -row['Cost'], 'Type': 'Component'})
+                
+        # Outflows: Fixed Costs
+        for _, row in fixed_costs_df.iterrows():
+            if pd.notna(row['Date']) and pd.notna(row['Fixed Cost']):
+                events.append({'Date': pd.to_datetime(row['Date']), 'Amount': -row['Fixed Cost'], 'Type': 'Fixed Cost'})
+                
+        # Inflows: Payments
+        for _, row in payments_df.iterrows():
+            if pd.notna(row['Date']) and pd.notna(row['Value']):
+                events.append({'Date': pd.to_datetime(row['Date']), 'Amount': row['Value'], 'Type': 'Payment Inflow'})
+        
+        if not events:
+            st.warning("Please enter at least one financial event to calculate cash flow.")
+        else:
+            events_df = pd.DataFrame(events)
+            events_df = events_df.sort_values('Date')
+            
+            # 2. Build Daily Timeline
+            start_date = events_df['Date'].min()
+            end_date = events_df['Date'].max()
+            date_range = pd.date_range(start=start_date, end=end_date)
+            
+            timeline_df = pd.DataFrame({'Date': date_range})
+            
+            # Group events by day in case multiple events happen on the same day
+            daily_events = events_df.groupby('Date')['Amount'].sum().reset_index()
+            daily_events.rename(columns={'Amount': 'Daily Net Cash'}, inplace=True)
+            
+            timeline_df = pd.merge(timeline_df, daily_events, on='Date', how='left').fillna(0)
+            
+            # 3. Simulate Daily Balances and Interest
+            daily_interest_rate = (interest_rate_pct / 100) / 365
+            
+            balances = []
+            interest_charges = []
+            running_balance = 0.0
+            
+            for index, row in timeline_df.iterrows():
+                # Add today's net cash to the balance
+                running_balance += row['Daily Net Cash']
+                
+                # Calculate interest at the end of the day based on the balance
+                daily_interest = 0.0
+                if running_balance < 0:
+                    daily_interest = running_balance * daily_interest_rate # This will be negative (a cost)
+                elif running_balance > 0 and earn_interest:
+                    daily_interest = running_balance * daily_interest_rate # Positive (a gain)
+                
+                # We do not compound interest into the cash balance daily in this simple model, 
+                # we track it separately to show it as a specific profitability line item.
+                balances.append(running_balance)
+                interest_charges.append(daily_interest)
+                
+            timeline_df['Ending Balance'] = balances
+            timeline_df['Daily Interest'] = interest_charges
+            timeline_df['Cumulative Interest'] = timeline_df['Daily Interest'].cumsum()
+            
+            # 4. Profitability Assessment
+            total_inflows = events_df[events_df['Amount'] > 0]['Amount'].sum()
+            total_outflows = abs(events_df[events_df['Amount'] < 0]['Amount'].sum())
+            total_net_interest = timeline_df['Daily Interest'].sum()
+            
+            gross_profit = total_inflows - total_outflows
+            net_profit = gross_profit + total_net_interest # net_interest is negative if it's a cost
+            
+            # Display KPIs
+            st.subheader("Project Profitability Assessment")
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Total Inflows", f"${total_inflows:,.2f}")
+            col2.metric("Total Outflows", f"${total_outflows:,.2f}")
+            col3.metric("Net Interest Paid/Earned", f"${total_net_interest:,.2f}")
+            col4.metric("Net Project Profit", f"${net_profit:,.2f}", 
+                        delta=f"{(net_profit/total_inflows)*100:.1f}% Margin" if total_inflows else "0%")
+            
+            st.markdown("---")
+            
+            # 5. Visualizations
+            st.subheader("Cash Flow Timeline")
+            
+            # Professional Blue Theme Chart
+            fig = go.Figure()
+            
+            # Add Balance Area
+            fig.add_trace(go.Scatter(
+                x=timeline_df['Date'], 
+                y=timeline_df['Ending Balance'],
+                fill='tozeroy',
+                mode='lines',
+                line=dict(color='#1E88E5', width=2),
+                name='Cash Balance',
+                fillcolor='rgba(30, 136, 229, 0.2)'
+            ))
+            
+            # Add Zero Line
+            fig.add_hline(y=0, line_dash="dash", line_color="gray", annotation_text="Zero Balance")
+            
+            fig.update_layout(
+                plot_bgcolor='white',
+                paper_bgcolor='white',
+                xaxis_title="Date",
+                yaxis_title="Amount ($)",
+                hovermode="x unified",
+                margin=dict(l=0, r=0, t=30, b=0)
+            )
+            
+            # Update grid lines to match minimalist request
+            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E0E0E0')
+            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#E0E0E0')
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            with st.expander("View Daily Financial Ledger"):
+                st.dataframe(timeline_df.style.format({
+                    'Daily Net Cash': '${:,.2f}',
+                    'Ending Balance': '${:,.2f}',
+                    'Daily Interest': '${:,.2f}',
+                    'Cumulative Interest': '${:,.2f}'
+                }), use_container_width=True)
