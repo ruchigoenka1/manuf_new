@@ -17,19 +17,19 @@ config = {
     'credentials': {
         'usernames': {
             'admin': {
-                'email': 'admin@example.com',
+                'email': 'a@gamil.com',
                 'name': 'System Admin',
-                'password': 'PASTE_HASH_1_HERE'  # e.g., '$2b$12$xyz...'
+                'password': '$2b$12$9cTEuIxNy2EF8sjqI/EFUObtti2opTHNwgdYie.seoAQAKYBRaFj2'  # e.g., '$2b$12$xyz...'
             },
             'founder_a': {
                 'email': 'founder@example.com',
                 'name': 'Founder A',
-                'password': 'PASTE_HASH_2_HERE'
+                'password': '$2b$12$vbwv5qGinnaPy8qFWUQiseu6kK1y4bHu7W2CIuKQkLgNf7BilXCz2'
             },
             'consultant_b': {
                 'email': 'consultant@example.com',
                 'name': 'Consultant B',
-                'password': 'PASTE_HASH_3_HERE'
+                'password': '$2b$12$.CLG49Ex3t1kd0mjkTcp6eKL/gFSp/b1mTXrnH59hQa5KUKsrTbDS'
             },
             'analyst_c': {
                 'email': 'analyst@example.com',
