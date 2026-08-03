@@ -329,6 +329,8 @@ def render_gantt_charts(df):
         )
         st.plotly_chart(fig_ind, use_container_width=True)
 
+
+
 def display_scheduling_results(results_df, total_makespan, penalty_msg=""):
     st.success(f"✨ Schedule Found! Total overall duration: **{total_makespan} days**.")
     if penalty_msg: st.warning(penalty_msg)
