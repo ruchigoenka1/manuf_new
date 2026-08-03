@@ -266,14 +266,17 @@ def render_gantt_charts(df):
         axis=1
     )
     
-    blue_colors = ['#1E3A8A', '#2563EB', '#3B82F6', '#60A5FA', '#93C5FD', '#BFDBFE']
+    # Replaced blue_colors with a highly distinct, professional color palette
+    distinct_colors = [
+        '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
+        '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
+    ]
 
-    # Reverted back to 450
     fig_job = px.timeline(
         df, x_start="Start", x_end="Finish", y="Job", color="Resource", text="Process", 
         title="Timeline Grouped by Production Batches", height=450,
         hover_data={"Formatted_Dates": True, "Duration": True, "Start": True, "Finish": True},
-        color_discrete_sequence=blue_colors
+        color_discrete_sequence=distinct_colors
     )
     fig_job.update_yaxes(autorange="reversed")
     fig_job.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", bargap=0.2) 
@@ -286,12 +289,11 @@ def render_gantt_charts(df):
     st.plotly_chart(fig_job, use_container_width=True)
     st.markdown("---")
     
-    # Reverted back to 450
     fig_res = px.timeline(
         df, x_start="Start", x_end="Finish", y="Resource", color="Job", text="Process", 
         title="Timeline Grouped by Resource Allocation", height=450,
         hover_data={"Formatted_Dates": True, "Duration": True, "Start": True, "Finish": True},
-        color_discrete_sequence=blue_colors
+        color_discrete_sequence=distinct_colors
     )
     fig_res.update_yaxes(autorange="reversed")
     fig_res.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", bargap=0.2) 
@@ -310,13 +312,12 @@ def render_gantt_charts(df):
     if selected_job:
         job_df = df[df['Job'] == selected_job]
         
-        # Kept the increased base height so it doesn't squish
         fig_ind = px.timeline(
             job_df, x_start="Start", x_end="Finish", y="Process", color="Resource", text="Process",
             title=f"Detailed Flow: {selected_job}",
             height=max(450, 150 + (len(job_df['Process'].unique()) * 60)),
             hover_data={"Formatted_Dates": True, "Duration": True, "Resource": True, "Start": True, "Finish": True},
-            color_discrete_sequence=blue_colors
+            color_discrete_sequence=distinct_colors
         )
         fig_ind.update_yaxes(autorange="reversed")
         fig_ind.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", bargap=0.2) 
