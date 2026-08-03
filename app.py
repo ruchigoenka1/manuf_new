@@ -242,39 +242,63 @@ st.markdown("---")
 def render_gantt_charts(df):
     st.subheader("📊 Interactive Sequence Gantt Charts")
     
-    def get_ordinal(n):
-        if 11 <= (n % 100) <= 13: return str(n) + 'th'
-        return str(n) + {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+    # Calculate Project Start and generate custom X-axis ticks (Dates + Day Number)
+    project_start = df['Start'].iloc[0] - pd.Timedelta(days=int(df['Start_Day'].iloc[0]))
+    max_date = df['Finish'].max()
+    days_span = (max_date - project_start).days
     
-    df["Project_Day"] = df["Start_Day"].apply(lambda x: f"{get_ordinal(x)} Day") + " to " + df["End_Day"].apply(lambda x: f"{get_ordinal(x)} Day")
+    if days_span <= 15:
+        tick_freq = '1D'
+    elif days_span <= 45:
+        tick_freq = '3D'
+    elif days_span <= 90:
+        tick_freq = '7D'
+    else:
+        tick_freq = '14D'
+        
+    tick_dates = pd.date_range(start=project_start, end=max_date, freq=tick_freq)
+    tick_vals = tick_dates
+    tick_text = [f"{d.strftime('%b %d')}<br>(Day {(d - project_start).days})" for d in tick_dates]
+
+    # Format hover string to include Dates with Day numbers
+    df["Formatted_Dates"] = df.apply(
+        lambda row: f"{row['Start'].strftime('%b %d, %Y')} (Day {row['Start_Day']}) to {row['Finish'].strftime('%b %d, %Y')} (Day {row['End_Day']})", 
+        axis=1
+    )
     
     blue_colors = ['#1E3A8A', '#2563EB', '#3B82F6', '#60A5FA', '#93C5FD', '#BFDBFE']
 
     fig_job = px.timeline(
         df, x_start="Start", x_end="Finish", y="Job", color="Resource", text="Process", 
         title="Timeline Grouped by Production Batches", height=450,
-        hover_data={"Project_Day": True, "Duration": True, "Start": True, "Finish": True},
+        hover_data={"Formatted_Dates": True, "Duration": True, "Start": True, "Finish": True},
         color_discrete_sequence=blue_colors
     )
     fig_job.update_yaxes(autorange="reversed")
     fig_job.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)") 
-    fig_job.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E0E0E0')
+    fig_job.update_xaxes(
+        showgrid=True, gridwidth=1, gridcolor='#E0E0E0',
+        tickvals=tick_vals, ticktext=tick_text
+    )
     fig_job.update_traces(textposition='inside', insidetextanchor='middle')
-    fig_job.update_traces(hovertemplate='<b>%{y}</b><br>Process: %{text}<br>Duration: %{customdata[1]} Days<br>Dates: %{base} to %{x}<br>Timeline: %{customdata[0]}<extra></extra>')
+    fig_job.update_traces(hovertemplate='<b>%{y}</b><br>Process: %{text}<br>Duration: %{customdata[1]} Days<br>Dates: %{customdata[0]}<extra></extra>')
     st.plotly_chart(fig_job, use_container_width=True)
     st.markdown("---")
     
     fig_res = px.timeline(
         df, x_start="Start", x_end="Finish", y="Resource", color="Job", text="Process", 
         title="Timeline Grouped by Resource Allocation", height=450,
-        hover_data={"Project_Day": True, "Duration": True, "Start": True, "Finish": True},
+        hover_data={"Formatted_Dates": True, "Duration": True, "Start": True, "Finish": True},
         color_discrete_sequence=blue_colors
     )
     fig_res.update_yaxes(autorange="reversed")
     fig_res.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)") 
-    fig_res.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E0E0E0')
+    fig_res.update_xaxes(
+        showgrid=True, gridwidth=1, gridcolor='#E0E0E0',
+        tickvals=tick_vals, ticktext=tick_text
+    )
     fig_res.update_traces(textposition='inside', insidetextanchor='middle')
-    fig_res.update_traces(hovertemplate='<b>%{y}</b><br>Process: %{text}<br>Duration: %{customdata[1]} Days<br>Dates: %{base} to %{x}<br>Timeline: %{customdata[0]}<extra></extra>')
+    fig_res.update_traces(hovertemplate='<b>%{y}</b><br>Process: %{text}<br>Duration: %{customdata[1]} Days<br>Dates: %{customdata[0]}<extra></extra>')
     st.plotly_chart(fig_res, use_container_width=True)
     st.markdown("---")
     
@@ -287,16 +311,19 @@ def render_gantt_charts(df):
             job_df, x_start="Start", x_end="Finish", y="Process", color="Resource", text="Process",
             title=f"Detailed Flow: {selected_job}",
             height=max(300, 100 + (len(job_df['Process'].unique()) * 40)),
-            hover_data={"Project_Day": True, "Duration": True, "Resource": True, "Start": True, "Finish": True},
+            hover_data={"Formatted_Dates": True, "Duration": True, "Resource": True, "Start": True, "Finish": True},
             color_discrete_sequence=blue_colors
         )
         fig_ind.update_yaxes(autorange="reversed")
         fig_ind.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)") 
-        fig_ind.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E0E0E0')
+        fig_ind.update_xaxes(
+            showgrid=True, gridwidth=1, gridcolor='#E0E0E0',
+            tickvals=tick_vals, ticktext=tick_text
+        )
         fig_ind.update_traces(
             textposition='inside', 
             insidetextanchor='middle',
-            hovertemplate='<b>Process: %{y}</b><br>Resource: %{customdata[2]}<br>Duration: %{customdata[1]} Days<br>Dates: %{base} to %{x}<br>Timeline: %{customdata[0]}<extra></extra>'
+            hovertemplate='<b>Process: %{y}</b><br>Resource: %{customdata[2]}<br>Duration: %{customdata[1]} Days<br>Dates: %{customdata[0]}<extra></extra>'
         )
         st.plotly_chart(fig_ind, use_container_width=True)
 
