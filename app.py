@@ -268,27 +268,28 @@ def render_gantt_charts(df):
     
     blue_colors = ['#1E3A8A', '#2563EB', '#3B82F6', '#60A5FA', '#93C5FD', '#BFDBFE']
 
+    # Increased fixed height for better visibility
     fig_job = px.timeline(
         df, x_start="Start", x_end="Finish", y="Job", color="Resource", text="Process", 
-        title="Timeline Grouped by Production Batches", height=450,
+        title="Timeline Grouped by Production Batches", height=600,
         hover_data={"Formatted_Dates": True, "Duration": True, "Start": True, "Finish": True},
         color_discrete_sequence=blue_colors
     )
     fig_job.update_yaxes(autorange="reversed")
-    # Added bargap here to make the bars thicker by reducing the gap between them
     fig_job.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", bargap=0.2) 
     fig_job.update_xaxes(
         showgrid=True, gridwidth=1, gridcolor='#E0E0E0',
         tickvals=tick_vals, ticktext=tick_text
     )
-    fig_job.update_traces(textposition='inside', insidetextanchor='middle', width=0.8) # width controls bar thickness directly
+    fig_job.update_traces(textposition='inside', insidetextanchor='middle', width=0.8) 
     fig_job.update_traces(hovertemplate='<b>%{y}</b><br>Process: %{text}<br>Duration: %{customdata[1]} Days<br>Dates: %{customdata[0]}<extra></extra>')
     st.plotly_chart(fig_job, use_container_width=True)
     st.markdown("---")
     
+    # Increased fixed height for better visibility
     fig_res = px.timeline(
         df, x_start="Start", x_end="Finish", y="Resource", color="Job", text="Process", 
-        title="Timeline Grouped by Resource Allocation", height=450,
+        title="Timeline Grouped by Resource Allocation", height=600,
         hover_data={"Formatted_Dates": True, "Duration": True, "Start": True, "Finish": True},
         color_discrete_sequence=blue_colors
     )
@@ -308,10 +309,12 @@ def render_gantt_charts(df):
     
     if selected_job:
         job_df = df[df['Job'] == selected_job]
+        
+        # Increased base height and per-process multiplier to fix squished layout
         fig_ind = px.timeline(
             job_df, x_start="Start", x_end="Finish", y="Process", color="Resource", text="Process",
             title=f"Detailed Flow: {selected_job}",
-            height=max(300, 100 + (len(job_df['Process'].unique()) * 40)),
+            height=max(450, 150 + (len(job_df['Process'].unique()) * 60)),
             hover_data={"Formatted_Dates": True, "Duration": True, "Resource": True, "Start": True, "Finish": True},
             color_discrete_sequence=blue_colors
         )
