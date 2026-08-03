@@ -24,7 +24,7 @@ config = {
             'admin': {
                 'email': 'a@gamil.com',
                 'name': 'System Admin',
-                'password': '$2b$12$9cTEuIxNy2EF8sjqI/EFUObtti2opTHNwgdYie.seoAQAKYBRaFj2' 
+                'password': '$2b$12$93MC4ONIi0.6QXjnL9uGveabXcSb1jCkauE4UiR68KeA5/0HRTyCK'
             },
             'founder_a': {
                 'email': 'ashu@ashu.com',
