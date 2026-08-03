@@ -275,12 +275,13 @@ def render_gantt_charts(df):
         color_discrete_sequence=blue_colors
     )
     fig_job.update_yaxes(autorange="reversed")
-    fig_job.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)") 
+    # Added bargap here to make the bars thicker by reducing the gap between them
+    fig_job.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", bargap=0.2) 
     fig_job.update_xaxes(
         showgrid=True, gridwidth=1, gridcolor='#E0E0E0',
         tickvals=tick_vals, ticktext=tick_text
     )
-    fig_job.update_traces(textposition='inside', insidetextanchor='middle')
+    fig_job.update_traces(textposition='inside', insidetextanchor='middle', width=0.8) # width controls bar thickness directly
     fig_job.update_traces(hovertemplate='<b>%{y}</b><br>Process: %{text}<br>Duration: %{customdata[1]} Days<br>Dates: %{customdata[0]}<extra></extra>')
     st.plotly_chart(fig_job, use_container_width=True)
     st.markdown("---")
@@ -292,12 +293,12 @@ def render_gantt_charts(df):
         color_discrete_sequence=blue_colors
     )
     fig_res.update_yaxes(autorange="reversed")
-    fig_res.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)") 
+    fig_res.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", bargap=0.2) 
     fig_res.update_xaxes(
         showgrid=True, gridwidth=1, gridcolor='#E0E0E0',
         tickvals=tick_vals, ticktext=tick_text
     )
-    fig_res.update_traces(textposition='inside', insidetextanchor='middle')
+    fig_res.update_traces(textposition='inside', insidetextanchor='middle', width=0.8)
     fig_res.update_traces(hovertemplate='<b>%{y}</b><br>Process: %{text}<br>Duration: %{customdata[1]} Days<br>Dates: %{customdata[0]}<extra></extra>')
     st.plotly_chart(fig_res, use_container_width=True)
     st.markdown("---")
@@ -315,7 +316,7 @@ def render_gantt_charts(df):
             color_discrete_sequence=blue_colors
         )
         fig_ind.update_yaxes(autorange="reversed")
-        fig_ind.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)") 
+        fig_ind.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", bargap=0.2) 
         fig_ind.update_xaxes(
             showgrid=True, gridwidth=1, gridcolor='#E0E0E0',
             tickvals=tick_vals, ticktext=tick_text
@@ -323,6 +324,7 @@ def render_gantt_charts(df):
         fig_ind.update_traces(
             textposition='inside', 
             insidetextanchor='middle',
+            width=0.8,
             hovertemplate='<b>Process: %{y}</b><br>Resource: %{customdata[2]}<br>Duration: %{customdata[1]} Days<br>Dates: %{customdata[0]}<extra></extra>'
         )
         st.plotly_chart(fig_ind, use_container_width=True)
