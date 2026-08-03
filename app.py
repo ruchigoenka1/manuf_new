@@ -257,8 +257,8 @@ def render_gantt_charts(df):
         color_discrete_sequence=blue_colors
     )
     fig_job.update_yaxes(autorange="reversed")
-    fig_job.update_layout(plot_bgcolor='white', paper_bgcolor='white')
-    fig_job.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E0E0E0')
+    # Set backgrounds to transparent to inherit Streamlit's native light/dark theme
+    fig_job.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)") 
     fig_job.update_traces(textposition='inside', insidetextanchor='middle')
     fig_job.update_traces(hovertemplate='<b>%{y}</b><br>Process: %{text}<br>Dates: %{base} to %{x}<br>Timeline: %{customdata[0]}<extra></extra>')
     st.plotly_chart(fig_job, use_container_width=True)
@@ -271,8 +271,8 @@ def render_gantt_charts(df):
         color_discrete_sequence=blue_colors
     )
     fig_res.update_yaxes(autorange="reversed")
-    fig_res.update_layout(plot_bgcolor='white', paper_bgcolor='white')
-    fig_res.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E0E0E0')
+    # Set backgrounds to transparent
+    fig_res.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)") 
     fig_res.update_traces(textposition='inside', insidetextanchor='middle')
     fig_res.update_traces(hovertemplate='<b>%{y}</b><br>Process: %{text}<br>Dates: %{base} to %{x}<br>Timeline: %{customdata[0]}<extra></extra>')
     st.plotly_chart(fig_res, use_container_width=True)
@@ -291,8 +291,8 @@ def render_gantt_charts(df):
             color_discrete_sequence=blue_colors
         )
         fig_ind.update_yaxes(autorange="reversed")
-        fig_ind.update_layout(plot_bgcolor='white', paper_bgcolor='white')
-        fig_ind.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E0E0E0')
+        # Set backgrounds to transparent
+        fig_ind.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)") 
         fig_ind.update_traces(
             textposition='inside', 
             insidetextanchor='middle',
