@@ -3,3 +3,4 @@ pandas
 plotly
 streamlit-authenticator
 PyYAML
+pulp
