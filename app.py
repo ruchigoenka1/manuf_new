@@ -268,10 +268,10 @@ def render_gantt_charts(df):
     
     blue_colors = ['#1E3A8A', '#2563EB', '#3B82F6', '#60A5FA', '#93C5FD', '#BFDBFE']
 
-    # Increased fixed height for better visibility
+    # Reverted back to 450
     fig_job = px.timeline(
         df, x_start="Start", x_end="Finish", y="Job", color="Resource", text="Process", 
-        title="Timeline Grouped by Production Batches", height=600,
+        title="Timeline Grouped by Production Batches", height=450,
         hover_data={"Formatted_Dates": True, "Duration": True, "Start": True, "Finish": True},
         color_discrete_sequence=blue_colors
     )
@@ -286,10 +286,10 @@ def render_gantt_charts(df):
     st.plotly_chart(fig_job, use_container_width=True)
     st.markdown("---")
     
-    # Increased fixed height for better visibility
+    # Reverted back to 450
     fig_res = px.timeline(
         df, x_start="Start", x_end="Finish", y="Resource", color="Job", text="Process", 
-        title="Timeline Grouped by Resource Allocation", height=600,
+        title="Timeline Grouped by Resource Allocation", height=450,
         hover_data={"Formatted_Dates": True, "Duration": True, "Start": True, "Finish": True},
         color_discrete_sequence=blue_colors
     )
@@ -310,7 +310,7 @@ def render_gantt_charts(df):
     if selected_job:
         job_df = df[df['Job'] == selected_job]
         
-        # Increased base height and per-process multiplier to fix squished layout
+        # Kept the increased base height so it doesn't squish
         fig_ind = px.timeline(
             job_df, x_start="Start", x_end="Finish", y="Process", color="Resource", text="Process",
             title=f"Detailed Flow: {selected_job}",
@@ -331,7 +331,6 @@ def render_gantt_charts(df):
             hovertemplate='<b>Process: %{y}</b><br>Resource: %{customdata[2]}<br>Duration: %{customdata[1]} Days<br>Dates: %{customdata[0]}<extra></extra>'
         )
         st.plotly_chart(fig_ind, use_container_width=True)
-
 
 
 def display_scheduling_results(results_df, total_makespan, penalty_msg=""):
