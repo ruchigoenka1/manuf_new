@@ -4,3 +4,6 @@ plotly
 streamlit-authenticator
 PyYAML
 pulp
+graphviz
+pymoo
+numpy
