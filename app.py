@@ -253,28 +253,28 @@ def render_gantt_charts(df):
     fig_job = px.timeline(
         df, x_start="Start", x_end="Finish", y="Job", color="Resource", text="Process", 
         title="Timeline Grouped by Production Batches", height=450,
-        hover_data={"Project_Day": True, "Start": True, "Finish": True},
+        hover_data={"Project_Day": True, "Duration": True, "Start": True, "Finish": True},
         color_discrete_sequence=blue_colors
     )
     fig_job.update_yaxes(autorange="reversed")
-    # Set backgrounds to transparent to inherit Streamlit's native light/dark theme
     fig_job.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)") 
+    fig_job.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E0E0E0')
     fig_job.update_traces(textposition='inside', insidetextanchor='middle')
-    fig_job.update_traces(hovertemplate='<b>%{y}</b><br>Process: %{text}<br>Dates: %{base} to %{x}<br>Timeline: %{customdata[0]}<extra></extra>')
+    fig_job.update_traces(hovertemplate='<b>%{y}</b><br>Process: %{text}<br>Duration: %{customdata[1]} Days<br>Dates: %{base} to %{x}<br>Timeline: %{customdata[0]}<extra></extra>')
     st.plotly_chart(fig_job, use_container_width=True)
     st.markdown("---")
     
     fig_res = px.timeline(
         df, x_start="Start", x_end="Finish", y="Resource", color="Job", text="Process", 
         title="Timeline Grouped by Resource Allocation", height=450,
-        hover_data={"Project_Day": True, "Start": True, "Finish": True},
+        hover_data={"Project_Day": True, "Duration": True, "Start": True, "Finish": True},
         color_discrete_sequence=blue_colors
     )
     fig_res.update_yaxes(autorange="reversed")
-    # Set backgrounds to transparent
     fig_res.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)") 
+    fig_res.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E0E0E0')
     fig_res.update_traces(textposition='inside', insidetextanchor='middle')
-    fig_res.update_traces(hovertemplate='<b>%{y}</b><br>Process: %{text}<br>Dates: %{base} to %{x}<br>Timeline: %{customdata[0]}<extra></extra>')
+    fig_res.update_traces(hovertemplate='<b>%{y}</b><br>Process: %{text}<br>Duration: %{customdata[1]} Days<br>Dates: %{base} to %{x}<br>Timeline: %{customdata[0]}<extra></extra>')
     st.plotly_chart(fig_res, use_container_width=True)
     st.markdown("---")
     
@@ -287,16 +287,16 @@ def render_gantt_charts(df):
             job_df, x_start="Start", x_end="Finish", y="Process", color="Resource", text="Process",
             title=f"Detailed Flow: {selected_job}",
             height=max(300, 100 + (len(job_df['Process'].unique()) * 40)),
-            hover_data={"Project_Day": True, "Start": True, "Finish": True},
+            hover_data={"Project_Day": True, "Duration": True, "Resource": True, "Start": True, "Finish": True},
             color_discrete_sequence=blue_colors
         )
         fig_ind.update_yaxes(autorange="reversed")
-        # Set backgrounds to transparent
         fig_ind.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)") 
+        fig_ind.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E0E0E0')
         fig_ind.update_traces(
             textposition='inside', 
             insidetextanchor='middle',
-            hovertemplate='<b>Process: %{y}</b><br>Resource: %{customdata[1]}<br>Dates: %{base} to %{x}<br>Timeline: %{customdata[0]}<extra></extra>'
+            hovertemplate='<b>Process: %{y}</b><br>Resource: %{customdata[2]}<br>Duration: %{customdata[1]} Days<br>Dates: %{base} to %{x}<br>Timeline: %{customdata[0]}<extra></extra>'
         )
         st.plotly_chart(fig_ind, use_container_width=True)
 
