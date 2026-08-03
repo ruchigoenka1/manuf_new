@@ -266,17 +266,27 @@ def render_gantt_charts(df):
         axis=1
     )
     
-    # Replaced blue_colors with a highly distinct, professional color palette
-    distinct_colors = [
-        '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
-        '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
+    # Custom color palette matching the provided screenshot
+    base_colors = [
+        '#8CD4FF', # Light Blue (R1)
+        '#0673DF', # Deep Blue (R2)
+        '#FFB4B4', # Light Pink/Salmon (R3)
+        '#FF2B2B', # Red (R4)
+        '#83E883', # Light Green (R5)
+        '#FFA020', # Extra: Orange 
+        '#B05BFF', # Extra: Purple
+        '#FFCC00'  # Extra: Yellow
     ]
+    
+    # Automatically append Plotly's extended Alphabet palette for any resources beyond the first 8, 
+    # ensuring no exact duplicates from our base colors.
+    extended_colors = base_colors + [color for color in px.colors.qualitative.Alphabet if color not in base_colors]
 
     fig_job = px.timeline(
         df, x_start="Start", x_end="Finish", y="Job", color="Resource", text="Process", 
         title="Timeline Grouped by Production Batches", height=450,
         hover_data={"Formatted_Dates": True, "Duration": True, "Start": True, "Finish": True},
-        color_discrete_sequence=distinct_colors
+        color_discrete_sequence=extended_colors
     )
     fig_job.update_yaxes(autorange="reversed")
     fig_job.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", bargap=0.2) 
@@ -293,7 +303,7 @@ def render_gantt_charts(df):
         df, x_start="Start", x_end="Finish", y="Resource", color="Job", text="Process", 
         title="Timeline Grouped by Resource Allocation", height=450,
         hover_data={"Formatted_Dates": True, "Duration": True, "Start": True, "Finish": True},
-        color_discrete_sequence=distinct_colors
+        color_discrete_sequence=extended_colors
     )
     fig_res.update_yaxes(autorange="reversed")
     fig_res.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", bargap=0.2) 
@@ -317,7 +327,7 @@ def render_gantt_charts(df):
             title=f"Detailed Flow: {selected_job}",
             height=max(450, 150 + (len(job_df['Process'].unique()) * 60)),
             hover_data={"Formatted_Dates": True, "Duration": True, "Resource": True, "Start": True, "Finish": True},
-            color_discrete_sequence=distinct_colors
+            color_discrete_sequence=extended_colors
         )
         fig_ind.update_yaxes(autorange="reversed")
         fig_ind.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", bargap=0.2) 
