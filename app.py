@@ -180,9 +180,11 @@ st.markdown("---")
 ## --------------------------------------------------------
 st.subheader("🗺️ Step 3: Verify Process Flow")
 
+
 def generate_single_job_flowchart(df, job_name):
     dot = graphviz.Digraph(comment=f'Process Flow {job_name}')
-    dot.attr(bgcolor='white', rankdir='LR')
+    # Changed bgcolor to 'transparent' so it inherits Streamlit's default background
+    dot.attr(bgcolor='transparent', rankdir='LR')
     job_data = df[df['Job'] == job_name]
     dot.node(job_name, job_name, shape='box', style='filled', fillcolor='#1E3A8A', fontcolor='white', color='#1E3A8A')
     
@@ -208,6 +210,7 @@ def generate_single_job_flowchart(df, job_name):
         else:
             dot.edge(job_name, proc_id, color='#3B82F6', penwidth='2')
     return dot
+    
 
 with st.expander("👁️ View Process Flow Map", expanded=False):
     if not valid_df.empty:
