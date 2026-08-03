@@ -261,8 +261,9 @@ def render_gantt_charts(df):
     tick_text = [f"{d.strftime('%b %d')}<br>(Day {(d - project_start).days})" for d in tick_dates]
 
     # Format hover string to include Dates with Day numbers
+    # We subtract 1 day from the Finish and End_Day variables so the label reads inclusively (e.g., 3 days starting Day 3 ends on Day 5)
     df["Formatted_Dates"] = df.apply(
-        lambda row: f"{row['Start'].strftime('%b %d, %Y')} (Day {row['Start_Day']}) to {row['Finish'].strftime('%b %d, %Y')} (Day {row['End_Day']})", 
+        lambda row: f"{row['Start'].strftime('%b %d, %Y')} (Day {row['Start_Day']}) to {(row['Finish'] - pd.Timedelta(days=1)).strftime('%b %d, %Y')} (Day {row['End_Day'] - 1})", 
         axis=1
     )
     
