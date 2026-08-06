@@ -631,7 +631,7 @@ with tab2:
     proj_generated = np.random.normal(proj_avg_demand, proj_std, num_periods)
     df_proj = pd.DataFrame({'Projected Demand': np.floor(np.clip(proj_generated, 0, None))})
     
-    render_analysis_and_distribution(df_proj, 'Projected Demand', default_threshold=proj_avg_demand * 0.8)
+    render_analysis_and_distribution(df_proj, 'Projected Demand', default_threshold=proj_avg_demand * 0.8, key_suffix="_t2_proj")
 
     # --- 3. Lead Time Demand Analysis (For Reorder Point) ---
     st.divider()
@@ -660,7 +660,7 @@ with tab2:
     # Render the analysis using the helper function
     # Default threshold automatically adjusts based on which average demand is being used
     default_rop = float(active_avg * lt_days)
-    render_analysis_and_distribution(df_ltd, 'Lead Time Demand', default_threshold=default_rop)
+    render_analysis_and_distribution(df_ltd, 'Lead Time Demand', default_threshold=default_rop, key_suffix="_t2_ltd")
 
     
 
@@ -861,7 +861,7 @@ with tab3:
         num_periods_t3 = len(df_base_t3)
 
         # Render Base Analysis
-        render_analysis_and_distribution(df_base_t3, 'Base Demand', default_threshold=mean_val_t3 * 0.8, key_suffix="_t3")
+        c(df_base_t3, 'Base Demand', default_threshold=mean_val_t3 * 0.8, key_suffix="_t3")
 
         st.divider()
         st.subheader("📊 Base Demand Volatility Analysis (CoV)")
@@ -889,7 +889,7 @@ with tab3:
         proj_generated_t3 = np.random.normal(proj_avg_demand_t3, proj_std_t3, num_periods_t3)
         df_proj_t3 = pd.DataFrame({'Projected Demand': np.floor(np.clip(proj_generated_t3, 0, None))})
         
-        render_analysis_and_distribution(df_proj_t3, 'Projected Demand', default_threshold=proj_avg_demand_t3 * 0.8)
+        render_analysis_and_distribution(df_proj_t3, 'Projected Demand', default_threshold=proj_avg_demand_t3 * 0.8, key="_t3_proj")
 
         # --- 3. Lead Time Demand Analysis ---
         st.divider()
@@ -913,7 +913,7 @@ with tab3:
         df_ltd_t3 = pd.DataFrame({'Lead Time Demand': rolling_ltd_t3})
         
         default_rop_t3 = float(active_avg_t3 * lt_days_t3)
-        render_analysis_and_distribution(df_ltd_t3, 'Lead Time Demand', default_threshold=default_rop_t3)
+        render_analysis_and_distribution(df_ltd_t3, 'Lead Time Demand', default_threshold=default_rop_t3, key_suffix="_t3_ltd")
 
         # --- 4. Continuous Review Inventory Simulator ---
         st.divider()
