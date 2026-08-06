@@ -6,6 +6,7 @@ import graphviz
 import numpy as np
 from datetime import datetime, timedelta
 import streamlit_authenticator as stauth
+import io
 
 # Import Metaheuristic libraries
 from pymoo.algorithms.soo.nonconvex.ga import GA
@@ -795,3 +796,240 @@ with tab2:
         )
         
         st.plotly_chart(fig_inv, use_container_width=True)
+
+import io
+
+with tab3:
+    st.header("Custom Data Analyzer")
+    
+    # --- 1. Data Upload & Configuration ---
+    st.subheader("1. Upload Historical Data")
+    
+    up_col1, up_col2 = st.columns([2, 1])
+    
+    df_base_t3 = None
+    
+    with up_col1:
+        uploaded_file = st.file_uploader("Upload your historical demand file (.xlsx or .csv):", type=["xlsx", "csv"], key="uploader_t3")
+        if uploaded_file is not None:
+            try:
+                if uploaded_file.name.endswith('.csv'):
+                    df_upload = pd.read_csv(uploaded_file)
+                else:
+                    df_upload = pd.read_excel(uploaded_file)
+                
+                if 'Demand' in df_upload.columns:
+                    # Extract and rename to match the helper function logic
+                    df_base_t3 = df_upload[['Demand']].dropna().copy()
+                    df_base_t3['Demand'] = pd.to_numeric(df_base_t3['Demand'], errors='coerce')
+                    df_base_t3 = df_base_t3.dropna()
+                    df_base_t3.columns = ['Base Demand']
+                    st.success("✅ File successfully uploaded and parsed!")
+                else:
+                    st.error("❌ Invalid Format: Your file must contain a column named exactly **'Demand'**.")
+            except Exception as e:
+                st.error(f"❌ Error loading file: {e}")
+                
+    with up_col2:
+        st.markdown("#### 📋 Download Template")
+        st.caption("Please match your data format to this template. The sheet must include a column header named **Demand**.")
+        
+        template_df = pd.DataFrame({'Demand': [120, 95, 110, 135, 80, 105, 115]})
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            template_df.to_excel(writer, index=False, sheet_name='Template')
+        
+        st.download_button(
+            label="📥 Download Excel Template",
+            data=buffer.getvalue(),
+            file_name="demand_template.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="dl_template_t3"
+        )
+
+    # --- Proceed only if data is successfully uploaded ---
+    if df_base_t3 is not None:
+        
+        with st.expander("🔢 View Raw Data", expanded=False):
+            st.dataframe(df_base_t3, use_container_width=True, height=200)
+
+        # Calculate Base Stats
+        mean_val_t3 = float(df_base_t3['Base Demand'].mean())
+        std_val_t3 = float(df_base_t3['Base Demand'].std())
+        base_cov_t3 = (std_val_t3 / mean_val_t3) if mean_val_t3 > 0 else 0.0
+        num_periods_t3 = len(df_base_t3)
+
+        # Render Base Analysis
+        render_analysis_and_distribution(df_base_t3, 'Base Demand', default_threshold=mean_val_t3 * 0.8)
+
+        st.divider()
+        st.subheader("📊 Base Demand Volatility Analysis (CoV)")
+        cov_col1_t3, cov_col2_t3 = st.columns([1, 2])
+        with cov_col1_t3:
+            st.markdown("#### Formula")
+            st.latex(r"CoV = \frac{\sigma}{\mu}")
+            st.caption(r"Where $\sigma$ = Standard Deviation and $\mu$ = Mean")
+        with cov_col2_t3:
+            m_col1_t3, m_col2_t3, m_col3_t3 = st.columns(3)
+            m_col1_t3.metric("Mean ($\mu$)", f"{mean_val_t3:.2f}")
+            m_col2_t3.metric("Std Dev ($\sigma$)", f"{std_val_t3:.2f}")
+            m_col3_t3.metric("Calculated CoV", f"{base_cov_t3:.3f}")
+
+        # --- 2. Projected Demand Analysis (Constant CoV) ---
+        st.divider()
+        st.subheader("2. Projected Demand Analysis (Constant CoV)")
+        st.write(f"Project future demand scenarios while maintaining your historical CoV of **{base_cov_t3:.3f}**.")
+        
+        proj_avg_demand_t3 = st.number_input("Enter Projected Average Demand:", min_value=1.0, value=float(mean_val_t3 * 1.2), key="proj_avg_t3")
+        proj_std_t3 = proj_avg_demand_t3 * base_cov_t3
+        
+        # Generate projected data matching the uploaded length
+        np.random.seed(42)
+        proj_generated_t3 = np.random.normal(proj_avg_demand_t3, proj_std_t3, num_periods_t3)
+        df_proj_t3 = pd.DataFrame({'Projected Demand': np.floor(np.clip(proj_generated_t3, 0, None))})
+        
+        render_analysis_and_distribution(df_proj_t3, 'Projected Demand', default_threshold=proj_avg_demand_t3 * 0.8)
+
+        # --- 3. Lead Time Demand Analysis ---
+        st.divider()
+        st.subheader("3. Lead Time Demand (Rolling Analysis)")
+        st.write("By calculating the rolling sum of daily demand over your lead time, we can visualize the actual **Lead Time Demand**. The percentiles of this distribution directly represent your required **Reorder Point (ROP)** to prevent stockouts.")
+        
+        demand_source_t3 = st.radio("Select Demand Data for Analysis:", ("Historical (Base Demand)", "Forecasted (Projected Demand)"), horizontal=True, key="lt_source_t3")
+        
+        lt_days_t3 = st.number_input("Lead Time (Days)", min_value=1, value=14, step=1, key="lt_days_t3")
+            
+        if demand_source_t3 == "Historical (Base Demand)":
+            target_df_t3 = df_base_t3
+            target_col_t3 = 'Base Demand'
+            active_avg_t3 = mean_val_t3
+        else:
+            target_df_t3 = df_proj_t3
+            target_col_t3 = 'Projected Demand'
+            active_avg_t3 = proj_avg_demand_t3
+            
+        rolling_ltd_t3 = target_df_t3[target_col_t3].rolling(window=int(lt_days_t3)).sum().dropna()
+        df_ltd_t3 = pd.DataFrame({'Lead Time Demand': rolling_ltd_t3})
+        
+        default_rop_t3 = float(active_avg_t3 * lt_days_t3)
+        render_analysis_and_distribution(df_ltd_t3, 'Lead Time Demand', default_threshold=default_rop_t3)
+
+        # --- 4. Continuous Review Inventory Simulator ---
+        st.divider()
+        st.subheader("4. Inventory Performance Simulator")
+        st.write("Run a day-by-day inventory simulation to evaluate how your parameters perform against actual demand patterns.")
+        
+        sim_source_t3 = st.radio("Simulation Data Source:", ("Historical (Base Demand)", "Forecasted (Projected Demand)"), horizontal=True, key="sim_source_t3")
+        
+        if sim_source_t3 == "Historical (Base Demand)":
+            sim_demand_t3 = df_base_t3['Base Demand'].values
+            default_avg_sim_t3 = mean_val_t3
+        else:
+            sim_demand_t3 = df_proj_t3['Projected Demand'].values
+            default_avg_sim_t3 = proj_avg_demand_t3
+        
+        inv_col1_t3, inv_col2_t3, inv_col3_t3 = st.columns(3)
+        with inv_col1_t3:
+            calc_rop_t3 = st.number_input("Reorder Point (Units)", min_value=0.0, value=float(default_avg_sim_t3 * lt_days_t3 * 1.2), key="sim_rop_t3")
+        with inv_col2_t3:
+            calc_lt_t3 = st.number_input("Average Lead Time (Days)", min_value=1, value=int(lt_days_t3), key="sim_lt_t3")
+        with inv_col3_t3:
+            calc_q_t3 = st.number_input("Order Quantity (Units)", min_value=1.0, value=float(default_avg_sim_t3 * 10), help="Amount ordered when ROP is hit.", key="sim_q_t3")
+
+        include_pipeline_t3 = st.checkbox("Include Pipeline Inventory (On-Order) in ROP Trigger", value=True, key="pipe_t3")
+
+        if st.button("▶️ Run Simulation", type="primary", key="run_sim_t3"):
+            current_inv_t3 = 1.25 * calc_rop_t3
+            pipeline_inv_t3 = 0
+            arrivals_t3 = {} 
+            
+            total_demand_t3 = 0
+            total_fulfilled_t3 = 0
+            stockout_days_t3 = 0
+            inv_levels_t3 = []
+            
+            stockout_x_t3 = []
+            stockout_y_t3 = []
+            
+            for day, d in enumerate(sim_demand_t3):
+                if day in arrivals_t3:
+                    current_inv_t3 += arrivals_t3[day]
+                    pipeline_inv_t3 -= arrivals_t3[day]
+                    
+                fulfilled_t3 = min(current_inv_t3, d)
+                current_inv_t3 -= fulfilled_t3
+                
+                total_demand_t3 += d
+                total_fulfilled_t3 += fulfilled_t3
+                
+                if d > fulfilled_t3:
+                    stockout_days_t3 += 1
+                    stockout_x_t3.append(day)
+                    stockout_y_t3.append(current_inv_t3) 
+                    
+                inv_levels_t3.append(current_inv_t3)
+                
+                trigger_level_t3 = current_inv_t3 + (pipeline_inv_t3 if include_pipeline_t3 else 0)
+                if trigger_level_t3 <= calc_rop_t3:
+                    arrivals_t3[day + int(calc_lt_t3)] = arrivals_t3.get(day + int(calc_lt_t3), 0) + calc_q_t3
+                    pipeline_inv_t3 += calc_q_t3
+                    
+            fill_rate_pct_t3 = (total_fulfilled_t3 / total_demand_t3) * 100 if total_demand_t3 > 0 else 0
+            total_days_t3 = len(sim_demand_t3)
+            min_inv_t3 = min(inv_levels_t3)
+            max_inv_t3 = max(inv_levels_t3)
+            avg_inv_t3 = sum(inv_levels_t3) / len(inv_levels_t3) if inv_levels_t3 else 0
+            
+            st.markdown("#### 🏆 Simulation KPIs")
+            kpi1_t3, kpi2_t3, kpi3_t3, kpi4_t3, kpi5_t3 = st.columns(5)
+            
+            kpi1_t3.metric(
+                "Fill Rate", 
+                f"{fill_rate_pct_t3:.1f}%", 
+                f"{int(total_fulfilled_t3):,} / {int(total_demand_t3):,} Units", 
+                delta_color="off"
+            )
+            kpi2_t3.metric(
+                "Stockout Days", 
+                f"{stockout_days_t3:,}", 
+                f"Out of {total_days_t3:,} Total Days", 
+                delta_color="off"
+            )
+            kpi3_t3.metric("Minimum Inventory", f"{int(min_inv_t3):,} Units")
+            kpi4_t3.metric("Maximum Inventory", f"{int(max_inv_t3):,} Units")
+            kpi5_t3.metric("Average Inventory", f"{int(avg_inv_t3):,} Units")
+            
+            import plotly.graph_objects as go
+            
+            fig_inv_t3 = go.Figure()
+            
+            fig_inv_t3.add_trace(go.Scatter(
+                x=list(range(len(inv_levels_t3))), 
+                y=inv_levels_t3, 
+                mode='lines',
+                line=dict(color='#0673DF'),
+                name='Units on Hand'
+            ))
+            
+            if stockout_x_t3:
+                fig_inv_t3.add_trace(go.Scatter(
+                    x=stockout_x_t3,
+                    y=stockout_y_t3,
+                    mode='markers',
+                    marker=dict(symbol='x', color='red', size=8, line=dict(width=1, color='darkred')),
+                    name='Stockout Event'
+                ))
+                
+            fig_inv_t3.add_hline(y=calc_rop_t3, line_dash="dot", line_color="#EF553B", annotation_text="Reorder Point", annotation_position="top left")
+            fig_inv_t3.add_hline(y=0, line_color="black")
+            
+            fig_inv_t3.update_layout(
+                title="Inventory Level Over Time", 
+                xaxis_title="Simulation Day", 
+                yaxis_title="Units on Hand",
+                template="plotly_white", 
+                hovermode="x unified"
+            )
+            
+            st.plotly_chart(fig_inv_t3, use_container_width=True)
