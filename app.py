@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 import streamlit_authenticator as stauth
 import io
 
-# Import Metaheuristic libraries
-from pymoo.algorithms.soo.nonconvex.ga import GA
+# Import Metaheuristic librarie
+from pymoo.algorithms.soo.nonconvex.ga import GAf
 from pymoo.optimize import minimize
 from pymoo.core.problem import ElementwiseProblem
 from pymoo.termination import get_termination
@@ -889,7 +889,7 @@ with tab3:
         proj_generated_t3 = np.random.normal(proj_avg_demand_t3, proj_std_t3, num_periods_t3)
         df_proj_t3 = pd.DataFrame({'Projected Demand': np.floor(np.clip(proj_generated_t3, 0, None))})
         
-        render_analysis_and_distribution(df_proj_t3, 'Projected Demand', default_threshold=proj_avg_demand_t3 * 0.8, key="_t3_proj")
+        render_analysis_and_distribution(df_proj_t3, 'Projected Demand', default_threshold=proj_avg_demand_t3 * 0.8, key_suffix="_t3_proj")
 
         # --- 3. Lead Time Demand Analysis ---
         st.divider()
