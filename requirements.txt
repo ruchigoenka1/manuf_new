@@ -8,3 +8,4 @@ graphviz
 pymoo
 numpy
 openpyxl
+xlsxwriter
