@@ -69,8 +69,8 @@ if "results_df" not in st.session_state:
 ## --------------------------------------------------------
 ## 1. TITLE & MODE SELECTION
 ## --------------------------------------------------------
-st.title("🗓️ Smart Job & Resource Scheduler")
-st.markdown("Optimize production workflows and demand scheduling dynamically.")
+# st.title("🗓️ Smart Job & Resource Scheduler")
+# st.markdown("Optimize production workflows and demand scheduling dynamically.")
 
 with st.sidebar:
     st.write(f"Welcome, **{st.session_state.get('name', 'User')}**")
@@ -114,13 +114,13 @@ with st.sidebar:
 ## --------------------------------------------------------
 ## 1. TITLE & MODE SELECTION
 ## --------------------------------------------------------
-st.title("🗓️ Smart Job & Resource Scheduler")
-st.markdown("Optimize production workflows and demand scheduling dynamically.")
+st.title("Inventory & Manufacturing App")
+# st.markdown("Optimize production workflows and demand scheduling dynamically.")
 
 # ... [Your existing Sidebar Code] ...
 
 # Add the tabs declaration here:
-tab1, tab2, tab3 = st.tabs(["📋 Data & Deadlines", "🗺️ Process Maps & Changeovers", "📊 Execution & Results"])
+tab1, tab2, tab3 = st.tabs(["Production Planning", "Demand Histogram Simulator", "Demand Analysis"])
 
 
 with tab1:
@@ -128,6 +128,7 @@ with tab1:
     ## --------------------------------------------------------
     ## 2. STEP 1: DATA ENTRY (BASE RECIPES / ORDERS)
     ## --------------------------------------------------------
+    st.title("Production Planning")
     st.subheader("📋 Step 1: Define Job & Process Data")
     
     default_data = pd.DataFrame([
