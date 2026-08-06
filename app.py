@@ -9,7 +9,7 @@ import streamlit_authenticator as stauth
 import io
 
 # Import Metaheuristic librarie
-from pymoo.algorithms.soo.nonconvex.ga import GAf
+from pymoo.algorithms.soo.nonconvex.ga import GA
 from pymoo.optimize import minimize
 from pymoo.core.problem import ElementwiseProblem
 from pymoo.termination import get_termination
