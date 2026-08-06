@@ -661,30 +661,102 @@ with tab2:
 
     
 
-   # --- 4. Average Inventory Calculator ---
+   # --- 4. Continuous Review Inventory Simulator ---
     st.divider()
-    st.subheader("4. Average Inventory Calculator")
-    st.write("Calculate expected inventory levels based on Reorder Point, Lead Time, and Order Quantity.")
+    st.subheader("4. Inventory Performance Simulator")
+    st.write("Run a day-by-day inventory simulation to evaluate how your parameters perform against actual demand patterns.")
+    
+    # Select the demand stream to simulate against
+    sim_source = st.radio("Simulation Data Source:", ("Historical (Base Demand)", "Forecasted (Projected Demand)"), horizontal=True, key="sim_source")
+    
+    if sim_source == "Historical (Base Demand)":
+        sim_demand = df_base['Base Demand'].values
+        default_avg = avg_demand
+    else:
+        sim_demand = df_proj['Projected Demand'].values
+        default_avg = proj_avg_demand
     
     inv_col1, inv_col2, inv_col3 = st.columns(3)
     with inv_col1:
-        calc_rop = st.number_input("Reorder Point (Units)", min_value=0.0, value=float(avg_demand * lt_days * 1.2), key="inv_rop")
+        calc_rop = st.number_input("Reorder Point (Units)", min_value=0.0, value=float(default_avg * lt_days * 1.2), key="sim_rop")
     with inv_col2:
-        calc_lt = st.number_input("Average Lead Time (Days)", min_value=0.0, value=float(lt_days), key="inv_lt")
+        calc_lt = st.number_input("Average Lead Time (Days)", min_value=1, value=int(lt_days), key="sim_lt")
     with inv_col3:
-        calc_q = st.number_input("Order Quantity (Units)", min_value=1.0, value=float(avg_demand * 10), help="Amount ordered when ROP is hit.", key="inv_q")
+        calc_q = st.number_input("Order Quantity (Units)", min_value=1.0, value=float(default_avg * 10), help="Amount ordered when ROP is hit.", key="sim_q")
 
-    # Inventory Math: Safety Stock = ROP - (Mean Demand * Mean Lead Time)
-    expected_ltd = avg_demand * calc_lt
-    # Ensure safety stock doesn't show as negative if ROP is set too low
-    safety_stock = max(0, calc_rop - expected_ltd)
-    
-    # Average Inventory = Cycle Stock (Q/2) + Safety Stock
-    avg_inventory = (calc_q / 2) + safety_stock
-    
-    inv_res1, inv_res2, inv_res3 = st.columns(3)
-    
-    # Added KPI display formatting preference based on your earlier apps (absolute values, no ratios)
-    inv_res1.metric("Safety Stock Component", f"{int(safety_stock):,} Units")
-    inv_res2.metric("Cycle Stock Component", f"{int(calc_q / 2):,} Units")
-    inv_res3.metric("Total Average Inventory", f"{int(avg_inventory):,} Units", help="Cycle Stock + Safety Stock")
+    # Layout toggle for pipeline visibility
+    include_pipeline = st.checkbox("Include Pipeline Inventory (On-Order) in ROP Trigger", value=True)
+
+    if st.button("▶️ Run Simulation", type="primary"):
+        # Initialize simulation with a stable starting balance
+        current_inv = 1.25 * calc_rop
+        pipeline_inv = 0
+        arrivals = {} 
+        
+        total_demand = 0
+        total_fulfilled = 0
+        stockout_days = 0
+        inv_levels = []
+        
+        # Day-by-day simulation loop
+        for day, d in enumerate(sim_demand):
+            # 1. Receive any orders arriving today
+            if day in arrivals:
+                current_inv += arrivals[day]
+                pipeline_inv -= arrivals[day]
+                
+            # 2. Fulfill daily demand
+            fulfilled = min(current_inv, d)
+            current_inv -= fulfilled
+            
+            # 3. Log metrics
+            total_demand += d
+            total_fulfilled += fulfilled
+            if d > fulfilled:
+                stockout_days += 1
+            inv_levels.append(current_inv)
+            
+            # 4. End of day review (Check if we need to order)
+            trigger_level = current_inv + (pipeline_inv if include_pipeline else 0)
+            if trigger_level <= calc_rop:
+                arrivals[day + int(calc_lt)] = calc_q
+                pipeline_inv += calc_q
+                
+        # Calculate final KPIs
+        fill_rate_pct = (total_fulfilled / total_demand) * 100 if total_demand > 0 else 0
+        total_days = len(sim_demand)
+        min_inv = min(inv_levels)
+        max_inv = max(inv_levels)
+        
+        st.markdown("#### 🏆 Simulation KPIs")
+        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+        
+        # Displaying both the ratio and the absolute physical values
+        kpi1.metric(
+            "Fill Rate", 
+            f"{fill_rate_pct:.1f}%", 
+            f"{int(total_fulfilled):,} / {int(total_demand):,} Units", 
+            delta_color="off"
+        )
+        kpi2.metric(
+            "Stockout Days", 
+            f"{stockout_days:,}", 
+            f"Out of {total_days:,} Total Days", 
+            delta_color="off"
+        )
+        kpi3.metric("Minimum Inventory", f"{int(min_inv):,} Units")
+        kpi4.metric("Maximum Inventory", f"{int(max_inv):,} Units")
+        
+        # Plot the inventory curve
+        fig_inv = px.line(
+            x=range(len(inv_levels)), 
+            y=inv_levels, 
+            title="Inventory Level Over Time", 
+            labels={'x': 'Simulation Day', 'y': 'Units on Hand'},
+            color_discrete_sequence=['#0673DF']
+        )
+        fig_inv.add_hline(y=calc_rop, line_dash="dot", line_color="#EF553B", annotation_text="Reorder Point", annotation_position="top left")
+        fig_inv.add_hline(y=0, line_color="black")
+        fig_inv.update_layout(template="plotly_white", hovermode="x unified")
+        
+        st.plotly_chart(fig_inv, use_container_width=True)
