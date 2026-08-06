@@ -518,31 +518,31 @@ with tab2:
     st.header("Demand & Lead Time Analyzer")
     
     # --- HELPER FUNCTION FOR REUSABLE ANALYSIS & PLOTTING ---
-    def render_analysis_and_distribution(data_df, column_name, default_threshold=40.0):
-        """Renders the Probability/Coverage Analysis and Histogram for a given dataframe and column."""
+    def render_analysis_and_distribution(data_df, column_name, default_threshold=40.0, key_suffix=""):
+        """Renders the Probability/Coverage Analysis and Histogram with unique keys to prevent collisions."""
         st.subheader(f"Probability & Coverage Analysis: {column_name}")
         
         analysis_col1, analysis_col2 = st.columns(2)
         with analysis_col1:
             st.markdown(f"#### Threshold Lookup (Points Below X)")
-            threshold = st.number_input(f"Enter {column_name} Threshold:", value=float(default_threshold), step=1.0, key=f"thresh_{column_name}")
+            threshold = st.number_input(f"Enter {column_name} Threshold:", value=float(default_threshold), step=1.0, key=f"thresh_{column_name}{key_suffix}")
             count_below = len(data_df[data_df[column_name] < threshold])
             percent_below = (count_below / len(data_df)) * 100 if len(data_df) > 0 else 0
             st.metric(f"Chances of {column_name} < {threshold}", f"{percent_below:.1f}%")
             st.caption(f"There are {count_below} periods where {column_name.lower()} was less than {threshold}.")
-
+    
         with analysis_col2:
             st.markdown("#### Percentile Lookup (Coverage Level)")
-            target_perc = st.number_input("Enter Service Level % (e.g. 95):", min_value=0.0, max_value=100.0, value=95.0, step=1.0, key=f"perc_{column_name}")
+            target_perc = st.number_input("Enter Service Level % (e.g. 95):", min_value=0.0, max_value=100.0, value=95.0, step=1.0, key=f"perc_{column_name}{key_suffix}")
             val_at_perc = np.percentile(data_df[column_name], target_perc)
             st.metric(f"{column_name} at {target_perc}% Service Level", f"{int(val_at_perc)}")
             st.caption(f"To cover {target_perc}% of all periods, you need to account for a {column_name.lower()} of {int(val_at_perc)}.")
-
+    
         st.subheader(f"Visual Distribution: {column_name}")
-        num_bins = st.slider("Select Number of Bins:", 5, 50, 15, key=f"bins_{column_name}")
+        num_bins = st.slider("Select Number of Bins:", 5, 50, 15, key=f"bins_{column_name}{key_suffix}")
         counts, bin_edges = np.histogram(data_df[column_name], bins=num_bins)
         bin_size = bin_edges[1] - bin_edges[0] if len(bin_edges) > 1 else 1
-
+    
         fig = px.histogram(data_df, x=column_name, template="plotly_white", color_discrete_sequence=['#4F8BF9'])
         fig.update_traces(xbins=dict(start=bin_edges[0], end=bin_edges[-1], size=bin_size))
         fig.add_vline(x=threshold, line_dash="dot", line_color="#EF553B", line_width=2.5, annotation_text=f"Threshold ({threshold})", annotation_position="top left")
@@ -555,7 +555,7 @@ with tab2:
             st.markdown("#### 📋 Statistical Summary")
             summary_stats = data_df[column_name].describe().to_frame().T
             st.dataframe(summary_stats[['mean', 'std', 'min', '25%', '50%', '75%', 'max']], use_container_width=True)
-
+    
         with table_col2:
             st.markdown("#### Bin Frequency Table")
             pct_total = counts / len(data_df) * 100
