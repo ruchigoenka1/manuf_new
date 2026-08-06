@@ -604,7 +604,7 @@ with tab2:
 
     st.divider()
 
-    render_analysis_and_distribution(df_base, 'Base Demand', default_threshold=avg_demand * 0.8)
+    render_analysis_and_distribution(df_base, 'Base Demand', default_threshold=avg_demand * 0.8, key_suffix="_t2")
 
     st.divider()
     st.subheader("📊 Base Demand Volatility Analysis (CoV)")
@@ -861,7 +861,7 @@ with tab3:
         num_periods_t3 = len(df_base_t3)
 
         # Render Base Analysis
-        render_analysis_and_distribution(df_base_t3, 'Base Demand', default_threshold=mean_val_t3 * 0.8)
+        render_analysis_and_distribution(df_base_t3, 'Base Demand', default_threshold=mean_val_t3 * 0.8, key_suffix="_t3")
 
         st.divider()
         st.subheader("📊 Base Demand Volatility Analysis (CoV)")
