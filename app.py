@@ -630,21 +630,25 @@ with tab2:
     
     render_analysis_and_distribution(df_proj, 'Projected Demand', default_threshold=proj_avg_demand * 0.8)
 
-    # --- 3. Lead Time Analysis ---
+    # --- 3. Lead Time Demand Analysis (For Reorder Point) ---
     st.divider()
-    st.subheader("3. Lead Time Analysis")
-    lt_source = st.radio("Lead Time Data Source:", ("Forecasted", "Historical"), horizontal=True)
+    st.subheader("3. Lead Time Demand (Rolling Analysis)")
+    st.write("By calculating the rolling sum of daily demand over your lead time, we can visualize the actual **Lead Time Demand**. The percentiles of this distribution directly represent your required **Reorder Point (ROP)** to prevent stockouts.")
     
-    lt_col1, lt_col2 = st.columns(2)
-    with lt_col1:
-        lt_avg = st.number_input(f"{lt_source} Average Lead Time (Days)", min_value=1.0, value=14.0, key="lt_avg")
-    with lt_col2:
-        lt_var = st.number_input(f"{lt_source} Lead Time Std Dev (Days)", min_value=0.0, value=3.0, key="lt_var")
+    lt_source = st.radio("Lead Time Type:", ("Forecasted", "Historical"), horizontal=True)
+    
+    # Only ask for the Lead Time in days (no variance input needed)
+    lt_days = st.number_input(f"{lt_source} Lead Time (Days)", min_value=1, value=14, step=1, key="lt_days")
         
-    lt_generated = np.random.normal(lt_avg, lt_var, num_periods)
-    df_lt = pd.DataFrame({'Lead Time': np.floor(np.clip(lt_generated, 0, None))})
+    # Calculate Rolling Lead Time Demand using the Base Demand
+    # This sums the daily demand over rolling windows equal to the lead time
+    rolling_ltd = df_base['Base Demand'].rolling(window=int(lt_days)).sum().dropna()
+    df_ltd = pd.DataFrame({'Lead Time Demand': rolling_ltd})
     
-    render_analysis_and_distribution(df_lt, 'Lead Time', default_threshold=lt_avg + 2)
+    # Render the analysis using the helper function
+    # Default threshold set to average demand * lead time (the cycle stock portion)
+    default_rop = float(avg_demand * lt_days)
+    render_analysis_and_distribution(df_ltd, 'Lead Time Demand', default_threshold=default_rop)
 
     # --- 4. Average Inventory Calculator ---
     st.divider()
