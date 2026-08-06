@@ -650,27 +650,30 @@ with tab2:
     default_rop = float(avg_demand * lt_days)
     render_analysis_and_distribution(df_ltd, 'Lead Time Demand', default_threshold=default_rop)
 
-    # --- 4. Average Inventory Calculator ---
+   # --- 4. Average Inventory Calculator ---
     st.divider()
     st.subheader("4. Average Inventory Calculator")
     st.write("Calculate expected inventory levels based on Reorder Point, Lead Time, and Order Quantity.")
     
     inv_col1, inv_col2, inv_col3 = st.columns(3)
     with inv_col1:
-        calc_rop = st.number_input("Reorder Point (Units)", min_value=0.0, value=float(avg_demand * lt_avg * 1.2), key="inv_rop")
+        calc_rop = st.number_input("Reorder Point (Units)", min_value=0.0, value=float(avg_demand * lt_days * 1.2), key="inv_rop")
     with inv_col2:
-        calc_lt = st.number_input("Average Lead Time (Days)", min_value=0.0, value=float(lt_avg), key="inv_lt")
+        calc_lt = st.number_input("Average Lead Time (Days)", min_value=0.0, value=float(lt_days), key="inv_lt")
     with inv_col3:
         calc_q = st.number_input("Order Quantity (Units)", min_value=1.0, value=float(avg_demand * 10), help="Amount ordered when ROP is hit.", key="inv_q")
 
     # Inventory Math: Safety Stock = ROP - (Mean Demand * Mean Lead Time)
     expected_ltd = avg_demand * calc_lt
+    # Ensure safety stock doesn't show as negative if ROP is set too low
     safety_stock = max(0, calc_rop - expected_ltd)
     
     # Average Inventory = Cycle Stock (Q/2) + Safety Stock
     avg_inventory = (calc_q / 2) + safety_stock
     
     inv_res1, inv_res2, inv_res3 = st.columns(3)
+    
+    # Added KPI display formatting preference based on your earlier apps (absolute values, no ratios)
     inv_res1.metric("Safety Stock Component", f"{int(safety_stock):,} Units")
     inv_res2.metric("Cycle Stock Component", f"{int(calc_q / 2):,} Units")
     inv_res3.metric("Total Average Inventory", f"{int(avg_inventory):,} Units", help="Cycle Stock + Safety Stock")
