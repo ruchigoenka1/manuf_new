@@ -698,6 +698,10 @@ with tab2:
         stockout_days = 0
         inv_levels = []
         
+        # Tracking arrays for stockout visual markers
+        stockout_x = []
+        stockout_y = []
+        
         # Day-by-day simulation loop
         for day, d in enumerate(sim_demand):
             # 1. Receive any orders arriving today
@@ -712,14 +716,19 @@ with tab2:
             # 3. Log metrics
             total_demand += d
             total_fulfilled += fulfilled
+            
+            # Log stockout event if we could not fulfill all demand
             if d > fulfilled:
                 stockout_days += 1
+                stockout_x.append(day)
+                stockout_y.append(current_inv)  # This will be 0
+                
             inv_levels.append(current_inv)
             
             # 4. End of day review (Check if we need to order)
             trigger_level = current_inv + (pipeline_inv if include_pipeline else 0)
             if trigger_level <= calc_rop:
-                arrivals[day + int(calc_lt)] = calc_q
+                arrivals[day + int(calc_lt)] = arrivals.get(day + int(calc_lt), 0) + calc_q
                 pipeline_inv += calc_q
                 
         # Calculate final KPIs
@@ -727,11 +736,11 @@ with tab2:
         total_days = len(sim_demand)
         min_inv = min(inv_levels)
         max_inv = max(inv_levels)
+        avg_inv = sum(inv_levels) / len(inv_levels) if inv_levels else 0
         
         st.markdown("#### 🏆 Simulation KPIs")
-        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+        kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
         
-        # Displaying both the ratio and the absolute physical values
         kpi1.metric(
             "Fill Rate", 
             f"{fill_rate_pct:.1f}%", 
@@ -746,17 +755,41 @@ with tab2:
         )
         kpi3.metric("Minimum Inventory", f"{int(min_inv):,} Units")
         kpi4.metric("Maximum Inventory", f"{int(max_inv):,} Units")
+        kpi5.metric("Average Inventory", f"{int(avg_inv):,} Units")
         
-        # Plot the inventory curve
-        fig_inv = px.line(
-            x=range(len(inv_levels)), 
+        # Plot the inventory curve using graph_objects for more layered control
+        import plotly.graph_objects as go
+        
+        fig_inv = go.Figure()
+        
+        # Base inventory line
+        fig_inv.add_trace(go.Scatter(
+            x=list(range(len(inv_levels))), 
             y=inv_levels, 
-            title="Inventory Level Over Time", 
-            labels={'x': 'Simulation Day', 'y': 'Units on Hand'},
-            color_discrete_sequence=['#0673DF']
-        )
+            mode='lines',
+            line=dict(color='#0673DF'),
+            name='Units on Hand'
+        ))
+        
+        # Stockout markers
+        if stockout_x:
+            fig_inv.add_trace(go.Scatter(
+                x=stockout_x,
+                y=stockout_y,
+                mode='markers',
+                marker=dict(symbol='x', color='red', size=8, line=dict(width=1, color='darkred')),
+                name='Stockout Event'
+            ))
+            
         fig_inv.add_hline(y=calc_rop, line_dash="dot", line_color="#EF553B", annotation_text="Reorder Point", annotation_position="top left")
         fig_inv.add_hline(y=0, line_color="black")
-        fig_inv.update_layout(template="plotly_white", hovermode="x unified")
+        
+        fig_inv.update_layout(
+            title="Inventory Level Over Time", 
+            xaxis_title="Simulation Day", 
+            yaxis_title="Units on Hand",
+            template="plotly_white", 
+            hovermode="x unified"
+        )
         
         st.plotly_chart(fig_inv, use_container_width=True)
