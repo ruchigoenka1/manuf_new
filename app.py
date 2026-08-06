@@ -513,3 +513,160 @@ with tab1:
     # =========================================================================
     if st.session_state.results_df is not None:
         display_scheduling_results(st.session_state.results_df, st.session_state.makespan, st.session_state.penalty_msg)
+with tab2:
+    st.header("Demand & Lead Time Analyzer")
+    
+    # --- HELPER FUNCTION FOR REUSABLE ANALYSIS & PLOTTING ---
+    def render_analysis_and_distribution(data_df, column_name, default_threshold=40.0):
+        """Renders the Probability/Coverage Analysis and Histogram for a given dataframe and column."""
+        st.subheader(f"Probability & Coverage Analysis: {column_name}")
+        
+        analysis_col1, analysis_col2 = st.columns(2)
+        with analysis_col1:
+            st.markdown(f"#### Threshold Lookup (Points Below X)")
+            threshold = st.number_input(f"Enter {column_name} Threshold:", value=float(default_threshold), step=1.0, key=f"thresh_{column_name}")
+            count_below = len(data_df[data_df[column_name] < threshold])
+            percent_below = (count_below / len(data_df)) * 100 if len(data_df) > 0 else 0
+            st.metric(f"Chances of {column_name} < {threshold}", f"{percent_below:.1f}%")
+            st.caption(f"There are {count_below} periods where {column_name.lower()} was less than {threshold}.")
+
+        with analysis_col2:
+            st.markdown("#### Percentile Lookup (Coverage Level)")
+            target_perc = st.number_input("Enter Service Level % (e.g. 95):", min_value=0.0, max_value=100.0, value=95.0, step=1.0, key=f"perc_{column_name}")
+            val_at_perc = np.percentile(data_df[column_name], target_perc)
+            st.metric(f"{column_name} at {target_perc}% Service Level", f"{int(val_at_perc)}")
+            st.caption(f"To cover {target_perc}% of all periods, you need to account for a {column_name.lower()} of {int(val_at_perc)}.")
+
+        st.subheader(f"Visual Distribution: {column_name}")
+        num_bins = st.slider("Select Number of Bins:", 5, 50, 15, key=f"bins_{column_name}")
+        counts, bin_edges = np.histogram(data_df[column_name], bins=num_bins)
+        bin_size = bin_edges[1] - bin_edges[0] if len(bin_edges) > 1 else 1
+
+        fig = px.histogram(data_df, x=column_name, template="plotly_white", color_discrete_sequence=['#4F8BF9'])
+        fig.update_traces(xbins=dict(start=bin_edges[0], end=bin_edges[-1], size=bin_size))
+        fig.add_vline(x=threshold, line_dash="dot", line_color="#EF553B", line_width=2.5, annotation_text=f"Threshold ({threshold})", annotation_position="top left")
+        fig.add_vline(x=val_at_perc, line_dash="dot", line_color="#00CC96", line_width=2.5, annotation_text=f"{target_perc}% Coverage ({int(val_at_perc)})", annotation_position="top right")
+        fig.update_layout(bargap=0.1, xaxis_title=f"{column_name} Quantity", yaxis_title="Count of Periods")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        table_col1, table_col2 = st.columns([1, 1])
+        with table_col1:
+            st.markdown("#### 📋 Statistical Summary")
+            summary_stats = data_df[column_name].describe().to_frame().T
+            st.dataframe(summary_stats[['mean', 'std', 'min', '25%', '50%', '75%', 'max']], use_container_width=True)
+
+        with table_col2:
+            st.markdown("#### Bin Frequency Table")
+            pct_total = counts / len(data_df) * 100
+            bin_df = pd.DataFrame({
+                "Bin Range": [f"{int(bin_edges[i])} - {int(bin_edges[i+1])}" for i in range(len(bin_edges)-1)],
+                "Frequency (Count)": counts,
+                "% of Total": pct_total.round(1),
+                "Cum. Count": counts.cumsum(),
+                "Cum. %": pct_total.cumsum().round(1)
+            })
+            st.dataframe(bin_df, use_container_width=True, hide_index=True)
+
+
+    # --- 1. Base Demand Configuration ---
+    st.subheader("1. Base Demand Configuration")
+    
+    col_a, col_b, col_c, col_d = st.columns(4)
+    with col_a:
+        dist_type = st.selectbox("Distribution Type", ("Normal", "Poisson", "Uniform"), key="dist_p1")
+    with col_b:
+        avg_demand = st.number_input("Average Demand", min_value=1.0, value=100.0, key="avg_p1")
+    with col_c:
+        num_periods = st.number_input("Number of Periods", min_value=10, value=10000, key="periods_p1")
+    with col_d:
+        if dist_type == "Normal":
+            variation = st.number_input("Std Dev (Variation)", min_value=0.1, value=15.0, key="v_norm")
+        elif dist_type == "Uniform":
+            variation = st.number_input("Range (+/-)", min_value=1.0, value=30.0, key="v_uni")
+        else:
+            st.markdown("<p style='padding-top:25px; color:gray;'>Poisson variation fixed by Mean.</p>", unsafe_allow_html=True)
+
+    np.random.seed(42)
+    if dist_type == "Normal":
+        generated = np.random.normal(avg_demand, variation, num_periods)
+    elif dist_type == "Poisson":
+        generated = np.random.poisson(avg_demand, num_periods)
+    else:
+        generated = np.random.uniform(avg_demand - variation, avg_demand + variation, num_periods)
+    
+    df_base = pd.DataFrame({'Base Demand': np.floor(np.clip(generated, 0, None))})
+
+    # Calculate Base CoV
+    mean_val = float(df_base['Base Demand'].mean())
+    std_val = float(df_base['Base Demand'].std())
+    base_cov = (std_val / mean_val) if mean_val > 0 else 0.0
+
+    render_analysis_and_distribution(df_base, 'Base Demand', default_threshold=avg_demand * 0.8)
+
+    st.divider()
+    st.subheader("📊 Base Demand Volatility Analysis (CoV)")
+    cov_col1, cov_col2 = st.columns([1, 2])
+    with cov_col1:
+        st.markdown("#### Formula")
+        st.latex(r"CoV = \frac{\sigma}{\mu}")
+        st.caption(r"Where $\sigma$ = Standard Deviation and $\mu$ = Mean")
+    with cov_col2:
+        m_col1, m_col2, m_col3 = st.columns(3)
+        m_col1.metric("Mean ($\mu$)", f"{mean_val:.2f}")
+        m_col2.metric("Std Dev ($\sigma$)", f"{std_val:.2f}")
+        m_col3.metric("Calculated CoV", f"{base_cov:.3f}")
+
+    # --- 2. Projected Demand Analysis (Constant CoV) ---
+    st.divider()
+    st.subheader("2. Projected Demand Analysis (Constant CoV)")
+    st.write(f"Project future demand scenarios while maintaining the current CoV of **{base_cov:.3f}**.")
+    
+    proj_avg_demand = st.number_input("Enter Projected Average Demand:", min_value=1.0, value=float(avg_demand * 1.2), key="proj_avg")
+    proj_std = proj_avg_demand * base_cov
+    
+    # Generate projected data using Normal dist to respect the strict CoV lock
+    proj_generated = np.random.normal(proj_avg_demand, proj_std, num_periods)
+    df_proj = pd.DataFrame({'Projected Demand': np.floor(np.clip(proj_generated, 0, None))})
+    
+    render_analysis_and_distribution(df_proj, 'Projected Demand', default_threshold=proj_avg_demand * 0.8)
+
+    # --- 3. Lead Time Analysis ---
+    st.divider()
+    st.subheader("3. Lead Time Analysis")
+    lt_source = st.radio("Lead Time Data Source:", ("Forecasted", "Historical"), horizontal=True)
+    
+    lt_col1, lt_col2 = st.columns(2)
+    with lt_col1:
+        lt_avg = st.number_input(f"{lt_source} Average Lead Time (Days)", min_value=1.0, value=14.0, key="lt_avg")
+    with lt_col2:
+        lt_var = st.number_input(f"{lt_source} Lead Time Std Dev (Days)", min_value=0.0, value=3.0, key="lt_var")
+        
+    lt_generated = np.random.normal(lt_avg, lt_var, num_periods)
+    df_lt = pd.DataFrame({'Lead Time': np.floor(np.clip(lt_generated, 0, None))})
+    
+    render_analysis_and_distribution(df_lt, 'Lead Time', default_threshold=lt_avg + 2)
+
+    # --- 4. Average Inventory Calculator ---
+    st.divider()
+    st.subheader("4. Average Inventory Calculator")
+    st.write("Calculate expected inventory levels based on Reorder Point, Lead Time, and Order Quantity.")
+    
+    inv_col1, inv_col2, inv_col3 = st.columns(3)
+    with inv_col1:
+        calc_rop = st.number_input("Reorder Point (Units)", min_value=0.0, value=float(avg_demand * lt_avg * 1.2), key="inv_rop")
+    with inv_col2:
+        calc_lt = st.number_input("Average Lead Time (Days)", min_value=0.0, value=float(lt_avg), key="inv_lt")
+    with inv_col3:
+        calc_q = st.number_input("Order Quantity (Units)", min_value=1.0, value=float(avg_demand * 10), help="Amount ordered when ROP is hit.", key="inv_q")
+
+    # Inventory Math: Safety Stock = ROP - (Mean Demand * Mean Lead Time)
+    expected_ltd = avg_demand * calc_lt
+    safety_stock = max(0, calc_rop - expected_ltd)
+    
+    # Average Inventory = Cycle Stock (Q/2) + Safety Stock
+    avg_inventory = (calc_q / 2) + safety_stock
+    
+    inv_res1, inv_res2, inv_res3 = st.columns(3)
+    inv_res1.metric("Safety Stock Component", f"{int(safety_stock):,} Units")
+    inv_res2.metric("Cycle Stock Component", f"{int(calc_q / 2):,} Units")
+    inv_res3.metric("Total Average Inventory", f"{int(avg_inventory):,} Units", help="Cycle Stock + Safety Stock")
