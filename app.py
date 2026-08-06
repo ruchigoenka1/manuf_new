@@ -585,7 +585,7 @@ with tab2:
             variation = st.number_input("Range (+/-)", min_value=1.0, value=30.0, key="v_uni")
         else:
             st.markdown("<p style='padding-top:25px; color:gray;'>Poisson variation fixed by Mean.</p>", unsafe_allow_html=True)
-
+    
     np.random.seed(42)
     if dist_type == "Normal":
         generated = np.random.normal(avg_demand, variation, num_periods)
@@ -600,6 +600,8 @@ with tab2:
     mean_val = float(df_base['Base Demand'].mean())
     std_val = float(df_base['Base Demand'].std())
     base_cov = (std_val / mean_val) if mean_val > 0 else 0.0
+
+    st.divider()
 
     render_analysis_and_distribution(df_base, 'Base Demand', default_threshold=avg_demand * 0.8)
 
