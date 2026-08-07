@@ -120,6 +120,9 @@ st.title("Inventory & Manufacturing App")
 
 # ... [Your existing Sidebar Code] ...
 
+if 'seed_counter' not in st.session_state:
+    st.session_state.seed_counter = 42
+
 # Add the tabs declaration here:
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["Production Planning", "Demand Histogram Simulator", "Demand Analysis", "Continous Review Policy Simulator", "Periodic Review policy Simulator"])
 
