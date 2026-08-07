@@ -121,7 +121,7 @@ st.title("Inventory & Manufacturing App")
 # ... [Your existing Sidebar Code] ...
 
 # Add the tabs declaration here:
-tab1, tab2, tab3 = st.tabs(["Production Planning", "Demand Histogram Simulator", "Demand Analysis"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Production Planning", "Demand Histogram Simulator", "Demand Analysis", "Continuous Review Simulator", "Periodic Review Simulator", "Inventory Audit"])
 
 
 with tab1:
@@ -1043,3 +1043,1553 @@ with tab3:
             )
             
             st.plotly_chart(fig_inv_t3, use_container_width=True)
+
+
+
+with tab4:
+    st.markdown(
+        """
+        <style>
+        .block-container {
+            padding-left: 2rem;
+            padding-right: 2rem;
+            padding-top: 2rem;
+        }
+        [data-testid="column"]:first-child {
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            padding-right: 2rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.header("Inventory Policy Simulator")
+    st.divider()
+
+    # Main split layout
+    input_col, output_col = st.columns([1, 3])
+
+    # ================================================
+    # LEFT PANEL: INPUTS
+    # ================================================
+    with input_col:
+        st.subheader("⚙️ Parameters")
+        
+        st.markdown("**Basic Settings**")
+        opening_balance = st.number_input("Opening Balance", value=500, key="sim_ob")
+        unit_value = st.number_input("Value Per Unit", value=100, key="sim_vu")
+        num_days = st.slider("Simulation Days", 100, 2000, 365, key="sim_nd")
+        
+        st.markdown("**Demand Settings**")
+        avg_demand = st.number_input("Average Demand", value=25, key="sim_ad")
+        cov = st.number_input("Demand CoV", value=0.8, key="sim_cov")
+        
+        if "demand_sequence_tab3" not in st.session_state:
+            st.session_state.demand_sequence_tab3 = None
+
+        if st.button("🔄 Generate New Demand", key="reset_dem", use_container_width=True):
+            st.session_state.demand_sequence_tab3 = None
+            
+        st.markdown("**Policy Settings**")
+        lead_time = st.number_input("Lead Time (Days)", value=3, key="sim_lt")
+        reorder_point = st.number_input("Reorder Point", value=200, key="sim_rp")
+        order_qty = st.number_input("Order Quantity", value=300, key="sim_oq")
+        
+        st.markdown("**Cost Metrics**")
+        holding_cost_percent = st.number_input("Holding Cost (%)", value=20.0, key="sim_hc")
+        ordering_cost = st.number_input("Ordering Cost / Order", value=500, key="sim_oc")
+
+    # ================================================
+    # BACKGROUND CALCULATIONS
+    # ================================================
+    holding_cost_rate = holding_cost_percent / 100
+    std_demand = avg_demand * cov
+
+    if st.session_state.demand_sequence_tab3 is None:
+        st.session_state.demand_sequence_tab3 = np.maximum(
+            0,
+            np.random.normal(avg_demand, std_demand, num_days)
+        ).round()
+
+    demand = st.session_state.demand_sequence_tab3
+    dates = pd.date_range(start="2024-01-01", periods=num_days)
+
+    inventory = opening_balance
+    pipeline_orders = []
+    data = []
+
+    for day in range(num_days):
+        shipment_received = 0
+        for order in pipeline_orders.copy():
+            if order[0] == day:
+                shipment_received += order[1]
+                pipeline_orders.remove(order)
+
+        opening = inventory
+        inventory += shipment_received
+        demand_today = demand[day]
+        inventory -= demand_today
+
+        if inventory < 0:
+            inventory = 0
+
+        pipeline_qty = sum(qty for arrival, qty in pipeline_orders)
+        inventory_position = opening - demand_today + shipment_received + pipeline_qty
+        new_order = 0
+
+        if inventory_position < reorder_point:
+            new_order = order_qty
+            pipeline_orders.append((day + lead_time, order_qty))
+
+        closing = inventory
+        closing_with_pipeline = closing + sum(qty for arrival, qty in pipeline_orders)
+
+        data.append([
+            dates[day], opening, demand_today, shipment_received, pipeline_qty,
+            inventory_position, new_order, closing, closing_with_pipeline
+        ])
+
+    df = pd.DataFrame(data, columns=[
+        "Date", "Opening Balance", "Demand", "Shipment Received", "Pipeline Order",
+        "Inventory Position", "New Order", "Closing Balance", "Closing Balance Including Pipeline"
+    ])
+
+    # KPI logic execution
+    stockout_days = (df["Closing Balance"] == 0).sum()
+    average_inventory = df["Closing Balance Including Pipeline"].mean()
+    average_age_inventory = average_inventory / df["Demand"].mean() if df["Demand"].mean() > 0 else 0
+
+    df["Blocked Working Capital"] = df["Inventory Position"] * unit_value
+    average_working_capital = df["Blocked Working Capital"].mean()
+
+    min_inventory = df["Closing Balance"].min()
+    max_inventory = df["Closing Balance"].max()
+    min_wc = df["Blocked Working Capital"].min()
+    max_wc = df["Blocked Working Capital"].max()
+
+    df["Inventory Value"] = df["Closing Balance Including Pipeline"] * unit_value
+    df["Holding Cost"] = df["Inventory Value"] * holding_cost_rate / 365
+    total_holding_cost = df["Holding Cost"].sum()
+
+    number_of_orders = (df["New Order"] > 0).sum()
+    total_ordering_cost = number_of_orders * ordering_cost
+    total_inventory_cost = total_holding_cost + total_ordering_cost
+
+    annual_demand = avg_demand * 365
+    holding_cost_per_unit = unit_value * holding_cost_rate
+    eoq = np.sqrt((2 * annual_demand * ordering_cost) / holding_cost_per_unit) if holding_cost_per_unit > 0 else 0
+
+    def simulate_inventory_cost(order_quantity):
+        sim_inv = opening_balance
+        sim_pipeline = []
+        holding_cost_total = 0
+        orders_count = 0
+
+        for day in range(num_days):
+            shipment_rec = 0
+            for order in sim_pipeline.copy():
+                if order[0] == day:
+                    shipment_rec += order[1]
+                    sim_pipeline.remove(order)
+
+            sim_inv += shipment_rec
+            dem_today = demand[day]
+            sim_inv -= dem_today
+
+            if sim_inv < 0:
+                sim_inv = 0
+
+            pip_qty = sum(qty for arrival, qty in sim_pipeline)
+            inv_pos = sim_inv + pip_qty
+
+            if inv_pos < reorder_point:
+                sim_pipeline.append((day + lead_time, order_quantity))
+                orders_count += 1
+
+            close_w_pip = sim_inv + sum(qty for arrival, qty in sim_pipeline)
+            inv_val = close_w_pip * unit_value
+            hold_cost_today = inv_val * holding_cost_rate / 365
+            holding_cost_total += hold_cost_today
+
+        order_cost_tot = orders_count * ordering_cost
+        return holding_cost_total + order_cost_tot
+
+    cost_current_policy = simulate_inventory_cost(order_qty)
+    cost_eoq_policy = simulate_inventory_cost(int(eoq))
+
+
+    # ================================================
+    # RIGHT PANEL: OUTPUTS & DASHBOARD
+    # ================================================
+    with output_col:
+        
+        # Matrix Collapsible Section 1: Core KPIs
+        with st.expander("📊 View Core Inventory & Financial Metrics", expanded=True):
+            st.markdown("#### Primary KPIs")
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Stockout Days", stockout_days)
+            c2.metric("Avg Age of Inventory", round(average_age_inventory, 1))
+            c3.metric("Average Inventory", round(average_inventory, 0))
+            c4.metric("Avg Working Capital", f"${round(average_working_capital, 0):,}")
+
+            st.markdown("#### Inventory & Capital Ranges")
+            r1, r2, r3, r4 = st.columns(4)
+            r1.metric("Minimum Inventory", round(min_inventory, 0))
+            r2.metric("Maximum Inventory", round(max_inventory, 0))
+            r3.metric("Min Working Capital", f"${round(min_wc, 0):,}")
+            r4.metric("Max Working Capital", f"${round(max_wc, 0):,}")
+
+            st.markdown("#### Cost Metrics Breakdown")
+            cc1, cc2, cc3 = st.columns(3)
+            cc1.metric("Total Holding Cost", f"${round(total_holding_cost, 0):,}")
+            cc2.metric("Total Ordering Cost", f"${round(total_ordering_cost, 0):,}")
+            cc3.metric("Total Inventory Cost", f"${round(total_inventory_cost, 0):,}")
+
+        # Matrix Collapsible Section 2: Optimization
+        with st.expander("💡 View EOQ & Policy Optimization", expanded=False):
+            st.markdown("#### Economic Order Quantity (EOQ)")
+            e1, e2 = st.columns(2)
+            e1.metric("Economic Order Quantity (EOQ)", round(eoq, 0))
+            e2.metric("Selected Order Quantity", order_qty)
+            
+            st.markdown("#### Policy Financial Comparison")
+            k1, k2, k3 = st.columns(3)
+            k1.metric("Cost with Current Policy", f"${round(cost_current_policy, 0):,}")
+            k2.metric("Cost with EOQ Policy", f"${round(cost_eoq_policy, 0):,}")
+            k3.metric("Savings Using EOQ", f"${round(cost_current_policy - cost_eoq_policy, 0):,}")
+
+
+        # Main Behaviour Chart
+        st.markdown("#### Inventory Behaviour")
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=df["Date"], y=df["Closing Balance"], name="Closing Inventory"))
+        fig.add_trace(go.Scatter(x=df["Date"], y=df["Closing Balance Including Pipeline"], name="Inventory Position"))
+        fig.add_hline(y=reorder_point, line_dash="dash", annotation_text="Reorder Point")
+
+        stockouts = df[df["Closing Balance"] == 0]
+        fig.add_trace(go.Scatter(x=stockouts["Date"], y=stockouts["Closing Balance"], mode="markers", name="Stockout", marker=dict(color="red", size=9)))
+
+        reorders = df[df["New Order"] > 0]
+        fig.add_trace(go.Scatter(x=reorders["Date"], y=reorders["Closing Balance"], mode="markers", name="Reorder Trigger", marker=dict(color="green", symbol="triangle-up", size=10)))
+
+        fig.add_hrect(y0=0, y1=reorder_point*0.5, fillcolor="red", opacity=0.08)
+        fig.add_hrect(y0=reorder_point*0.5, y1=reorder_point, fillcolor="yellow", opacity=0.08)
+        fig.add_hrect(y0=reorder_point, y1=df["Closing Balance Including Pipeline"].max()*1.2, fillcolor="green", opacity=0.05)
+        fig.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=400)
+        fig.update_yaxes(rangemode="tozero")
+        
+        st.plotly_chart(fig, use_container_width=True)
+        st.divider()
+
+        # Secondary Charts (Grid Layout)
+        chart_col1, chart_col2 = st.columns(2)
+        
+        with chart_col1:
+            st.markdown("#### Blocked Working Capital")
+            fig_wc = px.line(df, x="Date", y="Blocked Working Capital")
+            fig_wc.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=280)
+            st.plotly_chart(fig_wc, use_container_width=True)
+
+            st.markdown("#### Demand Distribution")
+            fig_hist = px.histogram(df, x="Demand", nbins=20)
+            fig_hist.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=280)
+            st.plotly_chart(fig_hist, use_container_width=True)
+
+        with chart_col2:
+            st.markdown("#### Pipeline Orders")
+            fig_pipeline = px.line(df, x="Date", y="Pipeline Order")
+            fig_pipeline.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=280)
+            st.plotly_chart(fig_pipeline, use_container_width=True)
+
+            st.markdown("#### Orders Placed")
+            orders = df[df["New Order"] > 0]
+            fig_orders = px.scatter(orders, x="Date", y="New Order")
+            fig_orders.update_layout(margin=dict(l=0, r=0, t=30, b=0), height=280)
+            st.plotly_chart(fig_orders, use_container_width=True)
+
+        st.divider()
+
+        # Deep Dives (Expanders to conserve vertical space)
+        with st.expander("📊 View Interactive Waterfall Analysis & Raw Data"):
+            st.markdown("#### Inventory Flow Waterfall")
+            selected_day = st.slider("Select Day for Waterfall Analysis", 0, len(df)-1, 0, key="waterfall_slider")
+            row = df.iloc[selected_day]
+
+            fig_waterfall = go.Figure(go.Waterfall(
+                measure=["absolute", "relative", "relative", "total"],
+                x=["Opening Balance", "Demand", "Shipment Received", "Closing Balance"],
+                y=[row["Opening Balance"], -row["Demand"], row["Shipment Received"], row["Closing Balance"]]
+            ))
+            fig_waterfall.update_layout(margin=dict(l=0, r=0, t=30, b=0))
+            st.plotly_chart(fig_waterfall, use_container_width=True)
+            
+            st.markdown("#### Simulation Output Table")
+            st.dataframe(df, use_container_width=True)
+        
+
+# ==========================================
+# TAB 3: PERIODIC REVIEW (VECTORIZED LOGIC)
+# ==========================================
+with tab5:
+    st.header("🔄 Periodic Review Analysis (Target-Level System)")
+    
+    st.markdown("""
+    In a periodic review system, inventory is checked at fixed intervals. The strategy must account for the mechanical reality of the **Protection Interval**—the time from when an order is placed until the *next* order can be placed and received.
+    """)
+
+    # --- Action: Regenerate Demand Button ---
+    btn_col1, btn_col2 = st.columns([1, 5])
+    with btn_col1:
+        if st.button("🔄 Generate New Demand", key="regen_demand_pr"):
+            st.session_state.seed_counter += 1
+
+    # --- 1. Baseline System Parameters Input ---
+    st.subheader("1. Supply Chain Parameters & Recommended Baseline")
+    
+    p_col1, p_col2, p_col3, p_col4, p_col5 = st.columns(5)
+    with p_col1:
+        pr_avg_demand = st.number_input("Avg Daily Demand", value=100.0, step=10.0)
+        pr_std_dev = st.number_input("Demand Std Dev", value=15.0, step=5.0)
+    with p_col2:
+        review_period = st.number_input("Recommended Review (Days)", value=14, min_value=1, step=1)
+        lead_time = st.number_input("Lead Time (Days)", value=7, min_value=1, step=1)
+    with p_col3:
+        target_service_level = st.slider("Target Service Level (%)", min_value=50.0, max_value=99.9, value=95.0, step=0.1)
+        z_score = norm.ppf(target_service_level / 100.0)
+    with p_col4:
+        unit_cost = st.number_input("Unit Cost ($)", value=50.0, step=5.0)
+        ordering_cost = st.number_input("Ordering Cost ($/order)", value=250.0, step=50.0, key="baseline_oc")
+    with p_col5:
+        holding_cost_pct = st.number_input("Annual Holding Cost (%)", value=20.0, step=1.0)
+        holding_cost_annual = unit_cost * (holding_cost_pct / 100.0)
+        holding_cost_daily = holding_cost_annual / 365.0
+
+    # Calculate Recommended Baseline Target
+    protection_interval = review_period + lead_time
+    expected_demand_pi = pr_avg_demand * protection_interval
+    std_dev_pi = pr_std_dev * np.sqrt(protection_interval)
+    safety_stock = z_score * std_dev_pi
+    recommended_target = expected_demand_pi + safety_stock
+
+    st.info(f"**Calculated Baseline Target:** {int(recommended_target)} Units (Accommodating a {review_period}-day review cycle and {lead_time}-day lead time).")
+
+    # --- 2. Multi-Scenario Customization Setup ---
+    st.divider()
+    
+    def sync_ordering_costs():
+        for i in range(5):  # Max slider value is 5
+            st.session_state[f"oc_key_{i}"] = st.session_state.baseline_oc
+
+    head_col1, head_col2 = st.columns([2, 1])
+    with head_col1:
+        st.subheader("2. Multi-Scenario Strategy Comparison")
+    with head_col2:
+        st.write("") # Spacing
+        st.button("📋 Sync Baseline Cost to All Scenarios", on_click=sync_ordering_costs)
+        
+    st.markdown("Test the recommended baseline against custom strategies. Modify the review period to see the mathematically optimum target update instantly.")
+    
+    num_scenarios = st.slider("Select Number of Custom Scenarios to Compare:", min_value=1, max_value=5, value=2)
+    
+    scenarios_data = []
+    s_cols = st.columns(num_scenarios)
+    
+    for i, col in enumerate(s_cols):
+        with col:
+            st.markdown(f"##### Scenario {i+1}")
+            
+            default_t = int(review_period + ((i+1) * 7)) 
+            t_val = st.number_input(f"Review Period (Days)", value=default_t, min_value=1, step=1, key=f"t_{i}")
+            
+            u_pi = t_val + lead_time
+            opt_target = (pr_avg_demand * u_pi) + (z_score * (pr_std_dev * np.sqrt(u_pi)))
+            st.caption(f"✨ **Optimum Target:** {int(opt_target)} Units")
+            target_val = st.number_input(f"Target Level (Units)", value=int(opt_target), step=50, key=f"target_{i}")
+            
+            if f"oc_key_{i}" not in st.session_state:
+                st.session_state[f"oc_key_{i}"] = ordering_cost
+                
+            oc_val = st.number_input(f"Ordering Cost ($)", step=10.0, key=f"oc_key_{i}")
+            
+            scenarios_data.append({
+                'name': f"Scenario {i+1}", 
+                'T': t_val, 
+                'Target': target_val, 
+                'OrderCost': oc_val
+            })
+
+    # --- NumPy Optimized Simulation Engine ---
+    np.random.seed(st.session_state.seed_counter)
+    sim_days_pr = 365
+    daily_demand_pr = np.clip(np.random.normal(pr_avg_demand, pr_std_dev, sim_days_pr), 0, None).round(0)
+
+    def simulate_periodic_system_vectorized(demand_array, T, L, target, order_c, hold_c_daily):
+        sim_days = len(demand_array)
+        inventory_history = np.zeros(sim_days)
+        receipts = np.zeros(sim_days + L + 1) 
+        
+        current_inv = target
+        order_sizes = []
+        units_fulfilled = 0
+        
+        for day in range(sim_days):
+            current_inv += receipts[day]
+            current_demand = demand_array[day]
+            
+            fulfilled = min(max(current_inv, 0), current_demand)
+            current_inv -= fulfilled
+            units_fulfilled += fulfilled
+            
+            inventory_history[day] = current_inv
+            
+            if day % T == 0:
+                on_order = np.sum(receipts[day+1:day+L+1])
+                inv_position = current_inv + on_order
+                
+                if inv_position < target:
+                    order_qty = target - inv_position
+                    receipts[day + L] += order_qty
+                    order_sizes.append(order_qty)
+                    
+        holding_units_total = np.sum(np.maximum(inventory_history, 0))
+        orders_placed = len(order_sizes)
+        total_order_cost = orders_placed * order_c
+        total_holding_cost = holding_units_total * hold_c_daily
+        total_demand_sim = np.sum(demand_array)
+        
+        return {
+            'history': inventory_history,
+            'total_demand': total_demand_sim,
+            'units_fulfilled': units_fulfilled,
+            'lost_sales': total_demand_sim - units_fulfilled,
+            'fill_rate': (units_fulfilled / total_demand_sim) * 100 if total_demand_sim > 0 else 0,
+            'orders_placed': orders_placed,
+            'min_order_size': np.min(order_sizes) if order_sizes else 0,
+            'max_order_size': np.max(order_sizes) if order_sizes else 0,
+            'avg_order_size': np.mean(order_sizes) if order_sizes else 0,
+            'avg_inventory': holding_units_total / sim_days,
+            'max_inventory': np.max(np.maximum(inventory_history, 0)),
+            'min_inventory': np.min(inventory_history),
+            'total_order_cost': total_order_cost,
+            'total_holding_cost': total_holding_cost,
+            'total_cost': total_order_cost + total_holding_cost
+        }
+
+    # Execute simulations 
+    res_baseline = simulate_periodic_system_vectorized(daily_demand_pr, review_period, lead_time, recommended_target, ordering_cost, holding_cost_daily)
+    
+    scenario_results = []
+    for s in scenarios_data:
+        res = simulate_periodic_system_vectorized(daily_demand_pr, s['T'], lead_time, s['Target'], s['OrderCost'], holding_cost_daily)
+        scenario_results.append(res)
+
+    # --- 3. Logically Bifurcated Summary Tables ---
+    st.divider()
+    st.markdown("### 📊 Policy Comparison & KPI Summary")
+    
+    def fmt_usd(val): return f"${val:,.2f}"
+    
+    # 3A. Operational Health Matrix
+    st.markdown("#### A. Operational & Capital Health Matrix")
+    ops_data = {
+        "Metric": [
+            "Review Interval", 
+            "Target Inventory Level", 
+            "Fill Rate (%)", 
+            "Lost Sales (Units)", 
+            "Min Inventory Level (Depth)",
+            "Avg Working Capital", 
+            "Max Working Capital"
+        ]
+    }
+    ops_data["Recommended Baseline"] = [
+        f"{review_period} Days", f"{int(recommended_target)}", f"{res_baseline['fill_rate']:.2f}%", 
+        f"{int(res_baseline['lost_sales'])}", f"{int(res_baseline['min_inventory'])}",
+        fmt_usd(res_baseline['avg_inventory'] * unit_cost), fmt_usd(res_baseline['max_inventory'] * unit_cost)
+    ]
+    for idx, s in enumerate(scenarios_data):
+        res = scenario_results[idx]
+        ops_data[s['name']] = [
+            f"{s['T']} Days", f"{int(s['Target'])}", f"{res['fill_rate']:.2f}%", 
+            f"{int(res['lost_sales'])}", f"{int(res['min_inventory'])}",
+            fmt_usd(res['avg_inventory'] * unit_cost), fmt_usd(res['max_inventory'] * unit_cost)
+        ]
+    st.dataframe(pd.DataFrame(ops_data), use_container_width=True, hide_index=True)
+
+    # 3B. Order Dynamics Matrix
+    st.markdown("#### B. Order Dynamics Matrix")
+    order_data = {
+        "Metric": ["Total No. of Orders", "Average Order Size", "Minimum Order Size", "Maximum Order Size"]
+    }
+    order_data["Recommended Baseline"] = [
+        f"{res_baseline['orders_placed']}", f"{int(res_baseline['avg_order_size'])} Units", 
+        f"{int(res_baseline['min_order_size'])} Units", f"{int(res_baseline['max_order_size'])} Units"
+    ]
+    for idx, s in enumerate(scenarios_data):
+        res = scenario_results[idx]
+        order_data[s['name']] = [
+            f"{res['orders_placed']}", f"{int(res['avg_order_size'])} Units", 
+            f"{int(res['min_order_size'])} Units", f"{int(res['max_order_size'])} Units"
+        ]
+    st.dataframe(pd.DataFrame(order_data), use_container_width=True, hide_index=True)
+
+    # 3C. Financial Matrix
+    st.markdown("#### C. Financial Projections Matrix")
+    fin_data = {
+        "Metric": ["Applied Ordering Cost ($/order)", "Total Ordering Cost", "Total Holding Cost", "Total System Cost"]
+    }
+    fin_data["Recommended Baseline"] = [
+        fmt_usd(ordering_cost), fmt_usd(res_baseline['total_order_cost']), 
+        fmt_usd(res_baseline['total_holding_cost']), fmt_usd(res_baseline['total_cost'])
+    ]
+    for idx, s in enumerate(scenarios_data):
+        res = scenario_results[idx]
+        fin_data[s['name']] = [
+            fmt_usd(s['OrderCost']), fmt_usd(res['total_order_cost']), 
+            fmt_usd(res['total_holding_cost']), fmt_usd(res['total_cost'])
+        ]
+    st.dataframe(pd.DataFrame(fin_data), use_container_width=True, hide_index=True)
+
+    # --- 4. Visual Bifurcation & Trajectory ---
+    chart_col1, chart_col2 = st.columns([1, 1])
+    colors = ['#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+    
+    with chart_col1:
+        st.markdown("#### Cost Bifurcation Analysis")
+        names = ["Baseline"] + [s['name'] for s in scenarios_data]
+        order_costs = [res_baseline['total_order_cost']] + [r['total_order_cost'] for r in scenario_results]
+        hold_costs = [res_baseline['total_holding_cost']] + [r['total_holding_cost'] for r in scenario_results]
+        
+        fig_cost = go.Figure(data=[
+            go.Bar(name='Ordering Cost', x=names, y=order_costs, marker_color='#2ca02c'),
+            go.Bar(name='Holding Cost', x=names, y=hold_costs, marker_color='#1f77b4')
+        ])
+        fig_cost.update_layout(
+            barmode='stack', template="plotly_white", yaxis_title="Total Cost ($)",
+            height=400, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig_cost, use_container_width=True)
+
+    with chart_col2:
+        st.markdown("#### Physical Inventory Trajectory")
+        fig_comp = go.Figure()
+        
+        fig_comp.add_trace(go.Scatter(
+            x=list(range(sim_days_pr)), y=res_baseline['history'], mode='lines', 
+            name='Baseline', line=dict(color='#1f77b4', width=3)
+        ))
+        
+        for idx, s in enumerate(scenarios_data):
+            fig_comp.add_trace(go.Scatter(
+                x=list(range(sim_days_pr)), y=scenario_results[idx]['history'], mode='lines', 
+                name=s['name'], line=dict(color=colors[idx], width=1.5, dash='dot')
+            ))
+        
+        fig_comp.add_hline(y=0, line_dash="solid", line_color="#333333", line_width=1)
+        fig_comp.update_layout(
+            template="plotly_white", xaxis_title="Simulation Day", yaxis_title="Units On Hand",
+            height=400, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig_comp, use_container_width=True)
+
+    # --- 5. Blocked Working Capital Chart ---
+    st.write("<br>", unsafe_allow_html=True)
+    st.markdown("#### 💰 Blocked Working Capital Trajectory")
+    st.caption("Visualizes the daily capital tied up on the warehouse floor (ignores backorders).")
+    
+    fig_wc = go.Figure()
+    
+    # Baseline WC
+    baseline_wc = np.maximum(res_baseline['history'], 0) * unit_cost
+    fig_wc.add_trace(go.Scatter(
+        x=list(range(sim_days_pr)), y=baseline_wc, mode='lines', 
+        name='Baseline', line=dict(color='#1f77b4', width=3)
+    ))
+    
+    # Scenarios WC
+    for idx, s in enumerate(scenarios_data):
+        scenario_wc = np.maximum(scenario_results[idx]['history'], 0) * unit_cost
+        fig_wc.add_trace(go.Scatter(
+            x=list(range(sim_days_pr)), y=scenario_wc, mode='lines', 
+            name=s['name'], line=dict(color=colors[idx], width=1.5, dash='dot')
+        ))
+        
+    fig_wc.update_layout(
+        template="plotly_white", xaxis_title="Simulation Day", yaxis_title="Capital Blocked ($)",
+        height=400, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    st.plotly_chart(fig_wc, use_container_width=True)
+
+    # --- 6. Collapsible Raw Data Logs ---
+    with st.expander("📋 View Daily Simulation Log Tables"):
+        st.markdown("Raw 365-day tracking for Physical Inventory levels side-by-side.")
+        
+        log_data = {
+            "Day": range(1, sim_days_pr + 1),
+            "Daily Demand": daily_demand_pr.astype(int),
+            "Baseline Inv": res_baseline['history'].astype(int)
+        }
+        
+        for idx, s in enumerate(scenarios_data):
+            log_data[f"{s['name']} Inv"] = scenario_results[idx]['history'].astype(int)
+            
+        log_df = pd.DataFrame(log_data)
+        
+        def highlight_stockouts(val):
+            color = '#ffcccc' if isinstance(val, (int, float)) and val < 0 else ''
+            return f'background-color: {color}'
+            
+        st.dataframe(
+            log_df.style.map(highlight_stockouts, subset=[c for c in log_df.columns if 'Inv' in c]), 
+            use_container_width=True, hide_index=True
+        )
+
+
+
+
+
+
+
+with tab6:
+        st.header("⚖️ Advanced Inventory Optimization Suite")
+        st.markdown(
+            "Analyze your inventory data through a twin-lens framework. First, review a historical backtest audit "
+            "to identify legacy profit leaks."
+        )
+        
+        # --- 🚀 THE VECTORIZED SIMULATION ENGINE (DYNAMIC FIFO AGE BUCKETS) ---
+        def fast_simulate_inventory(demand_arr, purchase_arr, opening_stock, lead_time, policy_type, param1, param2, age_bucket_edges=[30, 60, 90]):
+            total_days = len(demand_arr)
+            inv_levels = np.zeros(total_days)
+            lost_sales = np.zeros(total_days)
+            orders_placed = np.zeros(total_days)
+            
+            # Split positive receipts from negative returns to apply write-offs universally
+            positive_receipts = np.where(purchase_arr > 0, purchase_arr, 0)
+            negative_returns = np.where(purchase_arr < 0, np.abs(purchase_arr), 0)
+            
+            # FIFO Age Tracking Arrays
+            avg_ages = np.zeros(total_days)
+            max_ages = np.zeros(total_days)
+            
+            num_buckets = len(age_bucket_edges) + 1
+            age_buckets = np.zeros((total_days, num_buckets)) 
+            
+            max_lt = int(lead_time)
+            pipeline = np.zeros(total_days + max_lt + 1)
+            
+            if policy_type == "Actual":
+                pipeline[:total_days] = positive_receipts
+            else:
+                warm_up = min(max_lt, total_days)
+                pipeline[:warm_up] = positive_receipts[:warm_up]
+                
+            current_inv = opening_stock
+            fifo_queue = [[0, opening_stock]] if opening_stock > 0 else []
+            
+            for i in range(total_days):
+                demand = demand_arr[i]
+                arriving = pipeline[i]
+                daily_return = negative_returns[i]
+                
+                # 1. Process Positive Arriving Stock
+                if arriving > 0:
+                    fifo_queue.append([i, arriving])
+                    current_inv += arriving
+                    
+                # 2. Mechanically Deduct Returns / Expiries / Write-offs
+                if daily_return > 0:
+                    current_inv = max(0, current_inv - daily_return)
+                    # Deduct from FIFO queue to clear out the oldest physical stock
+                    while daily_return > 0 and fifo_queue:
+                        oldest_batch_qty = fifo_queue[0][1]
+                        if oldest_batch_qty <= daily_return:
+                            daily_return -= oldest_batch_qty
+                            fifo_queue.pop(0)
+                        else:
+                            fifo_queue[0][1] -= daily_return
+                            daily_return = 0
+                            
+                # 3. Fulfill Valid Customer Demand
+                demand_left = demand
+                while demand_left > 0 and fifo_queue:
+                    oldest_batch_qty = fifo_queue[0][1]
+                    if oldest_batch_qty <= demand_left:
+                        demand_left -= oldest_batch_qty
+                        fifo_queue.pop(0) 
+                    else:
+                        fifo_queue[0][1] -= demand_left
+                        demand_left = 0 
+                        
+                if demand_left > 0:
+                    lost_sales[i] = demand_left
+                    current_inv = 0
+                else:
+                    current_inv -= demand
+                    
+                inv_levels[i] = current_inv
+                
+                # Calculate Age Metrics & Dynamic Buckets
+                if fifo_queue:
+                    total_qty = 0
+                    sum_age_qty = 0
+                    max_age_val = 0
+                    
+                    for item in fifo_queue:
+                        arr_day, qty = item
+                        age = i - arr_day
+                        total_qty += qty
+                        sum_age_qty += (age * qty)
+                        
+                        if age > max_age_val:
+                            max_age_val = age
+                            
+                        # Dynamic bucket sorting
+                        idx = 0
+                        while idx < len(age_bucket_edges) and age > age_bucket_edges[idx]:
+                            idx += 1
+                        age_buckets[i, idx] += qty
+                            
+                    if total_qty > 0:
+                        avg_ages[i] = sum_age_qty / total_qty
+                        max_ages[i] = max_age_val
+                
+                if policy_type == "Continuous Review (Q, R)":
+                    net_position = current_inv + np.sum(pipeline[i+1:])
+                    if net_position <= param2:
+                        pipeline[i + max_lt] += param1
+                        orders_placed[i] = param1
+                elif policy_type == "Periodic Review (P, T)":
+                    if i % int(param1) == 0:
+                        net_position = current_inv + np.sum(pipeline[i+1:])
+                        order_qty = max(0, param2 - net_position)
+                        if order_qty > 0:
+                            pipeline[i + max_lt] += order_qty
+                            orders_placed[i] = order_qty
+                            
+            return inv_levels, lost_sales, orders_placed, avg_ages, max_ages, age_buckets
+
+        # --- STEP 1: INPUT PARAMETERS ---
+        st.subheader("1. Parameters & Cost Drivers")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            item_unit_cost = st.number_input("Item Unit Cost ($/Unit)", min_value=0.01, value=25.00, step=1.00, key="unit_cost_global")
+            holding_fixed_daily = st.number_input("Fixed Holding Cost ($/Unit/Day)", min_value=0.0, value=0.0, step=0.01, key="fixed_hold_global")
+            
+        with col2:
+            holding_var_pct = st.number_input("Variable Holding Cost (% of Item Cost/year)", min_value=0.0, max_value=100.0, value=15.0, step=1.0, key="var_hold_global") / 100.0
+            ordering_cost = st.number_input("Ordering Cost ($/order)", min_value=0.1, value=75.0, step=5.0, key="order_cost_global")
+            
+        with col3:
+            lost_sales_penalty = st.number_input("Lost Sales Penalty ($/Unit Lost)", min_value=0.0, value=0.0, step=1.0, key="penalty_global")
+            lead_time_days = st.number_input("Lead Time (Days)", min_value=1, value=14, step=1, key="lt_global")
+
+        st.markdown("---")
+        col_sys1, col_sys2 = st.columns([1, 2])
+        with col_sys1:
+            review_system = st.radio("Inventory Review System Strategy", ["Continuous Review (Q, R)", "Periodic Review (P, T)"], key="review_system_global")
+        with col_sys2:
+            service_level = st.slider("Target Service Level (%)", min_value=50.0, max_value=99.9, value=95.0, step=0.5, key="service_level_global") / 100.0
+
+        if review_system == "Periodic Review (P, T)":
+            st.markdown("##### ⏳ Periodic Configuration")
+            p_col1, _ = st.columns(2)
+            with p_col1:
+                user_p_days = st.number_input("Review Period Cycle (P in Days)", min_value=1, value=14, step=1, key="p_days_global")
+        else:
+            user_p_days = 1
+
+        # --- STEP 2: MULTI-FORMAT DATA INGESTION ENGINE ---
+        st.subheader("2. Upload Historical Invoices & Demand Data")
+        uploaded_file = st.file_uploader(
+            "Upload Inventory Ledger (Supports standard templates, raw ERP transactional logs, or stock card snapshots)", 
+            type=["csv", "xlsx", "xls"], 
+            key="uploader_global"
+        )
+        
+        if uploaded_file is None:
+            st.info("📥 Please upload your inventory ledger file (CSV or Excel) above to populate the suite modules.")
+        else:
+            detected_sheet_opening_stock = None
+            data_loaded_successfully = False
+            df_mapped = None
+            
+            try:
+                if uploaded_file.name.endswith('.csv'):
+                    raw_df = pd.read_csv(uploaded_file)
+                else:
+                    raw_df = pd.read_excel(uploaded_file)
+                    
+                raw_df.columns = raw_df.columns.str.strip()
+                    
+                if "Date" not in raw_df.columns:
+                    st.error("❌ Missing required column: 'Date'.")
+                else:
+                    raw_df["Date"] = pd.to_datetime(raw_df["Date"])
+                    raw_df = raw_df.sort_values(by="Date").reset_index(drop=True)
+                    
+                    open_balance_headers = ["Opening Balance", "Opening", "Opening_Stock", "Opening Stock"]
+                    for header in open_balance_headers:
+                        if header in raw_df.columns:
+                            detected_sheet_opening_stock = int(raw_df[header].iloc[0])
+                            break
+                    
+                    if "Demand_Qty" in raw_df.columns and "Purchase_Qty" in raw_df.columns:
+                        df_mapped = raw_df[["Date", "Demand_Qty", "Purchase_Qty"]].copy()
+                    elif "Demand" in raw_df.columns and "Stock Received" in raw_df.columns:
+                        df_mapped = pd.DataFrame({"Date": raw_df["Date"], "Demand_Qty": raw_df["Demand"], "Purchase_Qty": raw_df["Stock Received"]})
+                    elif ("Receiving" in raw_df.columns) and any(col in raw_df.columns for col in ["Demand/Sales", "Demand", "Sales"]):
+                        outbound_col = "Demand/Sales" if "Demand/Sales" in raw_df.columns else ("Demand" if "Demand" in raw_df.columns else "Sales")
+                        df_mapped = pd.DataFrame({"Date": raw_df["Date"], "Demand_Qty": raw_df[outbound_col], "Purchase_Qty": raw_df["Receiving"]})
+                    else:
+                        st.error("❌ Column layout structure mismatch. Could not find Demand and Receiving columns.")
+
+                    if df_mapped is not None:
+                        df_mapped = df_mapped.groupby("Date").agg({"Demand_Qty": "sum", "Purchase_Qty": "sum"}).reset_index()
+                        df_mapped = df_mapped.set_index("Date").resample("1D").asfreq()
+                        df_mapped["Demand_Qty"] = df_mapped["Demand_Qty"].fillna(0.0)
+                        df_mapped["Purchase_Qty"] = df_mapped["Purchase_Qty"].fillna(0.0)
+                        df_mapped = df_mapped.reset_index()
+                        data_loaded_successfully = True
+                        
+            except Exception as e:
+                st.error(f"Error parsing file elements: {e}")
+
+            # ONLY PROCEED IF DATA IS CLEANED
+            if data_loaded_successfully and df_mapped is not None:
+                full_df = df_mapped.copy() 
+                
+                absolute_min_date = full_df["Date"].min().date()
+                absolute_max_date = full_df["Date"].max().date()
+                
+                file_state_key = f"last_file_{uploaded_file.name}_{uploaded_file.size}"
+                
+                if "current_file_token" not in st.session_state or st.session_state.current_file_token != file_state_key:
+                    st.session_state.current_file_token = file_state_key
+                    st.session_state.min_date_global = absolute_min_date
+                    st.session_state.max_date_global = absolute_max_date
+                    
+                    avg_daily_full = full_df["Demand_Qty"].mean()
+                    if detected_sheet_opening_stock is not None:
+                        default_start = int(detected_sheet_opening_stock)
+                    else:
+                        default_start = int(1.25 * (avg_daily_full * lead_time_days))
+                    
+                    st.session_state.absolute_day1_stock = default_start
+                    st.session_state.previous_start_date = absolute_min_date
+                    st.session_state.previous_end_date = absolute_max_date
+                    st.session_state.opening_stock_global = default_start
+                    
+                    st.session_state.start_date_key = absolute_min_date
+                    st.session_state.end_date_key = absolute_max_date
+                    
+                    if "q_audit_suite" in st.session_state: del st.session_state.q_audit_suite
+                    if "rop_audit_suite" in st.session_state: del st.session_state.rop_audit_suite
+
+                st.divider()
+                
+                st.markdown("### 📅 3. Select Analysis Period")
+                st.markdown("Filter historical data. The starting inventory will automatically mathematically roll forward to match your selected Start Date.")
+                
+                def reset_dates():
+                    st.session_state.start_date_key = st.session_state.min_date_global
+                    st.session_state.end_date_key = st.session_state.max_date_global
+                    st.session_state.previous_start_date = st.session_state.min_date_global
+                    st.session_state.previous_end_date = st.session_state.max_date_global
+                    st.session_state.opening_stock_global = st.session_state.absolute_day1_stock
+
+                col_date1, col_date2, col_date3 = st.columns([2, 2, 1])
+                
+                with col_date1:
+                    start_date = st.date_input("Starting Date", min_value=absolute_min_date, max_value=absolute_max_date, key="start_date_key")
+                with col_date2:
+                    end_date = st.date_input("Ending Date", min_value=absolute_min_date, max_value=absolute_max_date, key="end_date_key")
+                with col_date3:
+                    st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                    st.button("🔄 Reset", on_click=reset_dates, use_container_width=True)
+                
+                if "previous_start_date" not in st.session_state:
+                    st.session_state.previous_start_date = absolute_min_date
+                if "previous_end_date" not in st.session_state:
+                    st.session_state.previous_end_date = absolute_max_date
+
+                date_changed = (start_date != st.session_state.previous_start_date) or (end_date != st.session_state.previous_end_date)
+
+                if date_changed:
+                    if "q_audit_suite" in st.session_state: del st.session_state.q_audit_suite
+                    if "rop_audit_suite" in st.session_state: del st.session_state.rop_audit_suite
+                    
+                    if start_date != st.session_state.previous_start_date:
+                        temp_balance = st.session_state.absolute_day1_stock
+                        pre_period_df = full_df[full_df["Date"].dt.date < start_date]
+                        
+                        pre_d_arr = pre_period_df["Demand_Qty"].values
+                        pre_p_arr = pre_period_df["Purchase_Qty"].values
+                        for idx in range(len(pre_d_arr)):
+                            temp_balance = max(0, temp_balance + pre_p_arr[idx] - pre_d_arr[idx])
+                        
+                        st.session_state.opening_stock_global = int(temp_balance)
+                    
+                    st.session_state.previous_start_date = start_date
+                    st.session_state.previous_end_date = end_date
+
+                if start_date > end_date:
+                    st.error("⚠️ The Starting Date must be before or equal to the Ending Date. Please adjust your selection.")
+                else:
+                    df = full_df[(full_df["Date"].dt.date >= start_date) & (full_df["Date"].dt.date <= end_date)].reset_index(drop=True)
+                    
+                    if df.empty:
+                        st.warning("No data available for the selected date range. Please widen your selection.")
+                    else:
+                        demand_arr_main = df["Demand_Qty"].values
+                        purchase_arr_main = df["Purchase_Qty"].values
+                        
+                        # Filter for actual positive purchase orders to calculate correct baseline KPIs
+                        actual_orders_placed = np.count_nonzero(purchase_arr_main[purchase_arr_main > 0])
+                        actual_total_units_purchased = purchase_arr_main[purchase_arr_main > 0].sum()
+                        total_demand = demand_arr_main.sum()
+                        
+                        avg_daily_demand_calc = demand_arr_main.mean()
+                        std_daily_demand = demand_arr_main.std() if len(df) > 1 else 0
+                        cov = std_daily_demand / max(0.1, avg_daily_demand_calc)
+
+                    with st.expander("📈 View Historical Demand Trend & Growth Timeline", expanded=False):
+                        rolling_days = st.slider("Select Rolling Average Window (Days)", min_value=1, max_value=90, value=15, step=1)
+                        df[f"Rolling_Avg"] = df["Demand_Qty"].rolling(window=rolling_days, min_periods=1).mean()
+                        
+                        stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
+                        
+                        if len(df) >= rolling_days * 2:
+                            current_window_sum = df["Demand_Qty"].iloc[-rolling_days:].sum()
+                            previous_window_sum = df["Demand_Qty"].iloc[-(rolling_days*2):-rolling_days].sum()
+                            if previous_window_sum > 0:
+                                trend_pct = ((current_window_sum - previous_window_sum) / previous_window_sum) * 100
+                            else:
+                                trend_pct = 100.0 if current_window_sum > 0 else 0.0
+                            stat_col1.metric(label=f"Trend (Last {rolling_days} Days)", value=f"{current_window_sum:,.0f} units", delta=f"{trend_pct:+.1f}% Growth", delta_color="normal")
+                        elif len(df) >= rolling_days:
+                            current_window_sum = df["Demand_Qty"].iloc[-rolling_days:].sum()
+                            stat_col1.metric(label=f"Trend (Last {rolling_days} Days)", value=f"{current_window_sum:,.0f} units", delta="Widen dates for trend", delta_color="off")
+                        else:
+                            stat_col1.metric(label="Trend", value="N/A", delta="Insufficient Data", delta_color="off")
+                            
+                        stat_col2.metric("Average Daily Demand", f"{avg_daily_demand_calc:.1f} units")
+                        stat_col3.metric("Standard Deviation", f"{std_daily_demand:.1f} units")
+                        stat_col4.metric("Volatility (CoV)", f"{cov:.2f}")
+                        st.markdown("---")
+
+                        demand_fig = go.Figure()
+                        demand_fig.add_trace(go.Scatter(x=df["Date"], y=df["Demand_Qty"], mode='lines', name='Raw Daily Demand', line=dict(color='#B0C4DE', width=1.5), opacity=0.6))
+                        demand_fig.add_trace(go.Scatter(x=df["Date"], y=df["Rolling_Avg"], mode='lines', name=f'{rolling_days}-Day Moving Avg', line=dict(color='#3d5a80', width=3)))
+                        demand_fig.update_layout(template="plotly_white", yaxis_title="Units", xaxis_title="Date", margin=dict(t=20, b=20), height=350, legend=dict(orientation="h", y=1.1, x=1, xanchor="right"))
+                        st.plotly_chart(demand_fig, use_container_width=True)
+
+                    st.markdown("---")
+                    st.markdown("##### 📦 Initial Warehouse Capital Balance")
+                    opening_stock_override = st.number_input("Starting Balance for Selected Period", min_value=0, step=10, key="opening_stock_global", help="This value automatically updates mathematically based on the start date you select above, but you can override it manually.")
+
+                    with st.expander("📋 View Complete Running Balance Table Snapshots", expanded=False):
+                        st.markdown("An interactive historical stock card ledger driven directly by your initial opening stock parameter above.")
+                        cl_open_list, cl_close_list, t_bal = np.zeros(len(df)), np.zeros(len(df)), opening_stock_override
+                        
+                        for i_run in range(len(df)):
+                            cl_open_list[i_run] = t_bal
+                            t_bal = max(0, t_bal + purchase_arr_main[i_run] - demand_arr_main[i_run])
+                            cl_close_list[i_run] = t_bal
+                            
+                        full_stock_card_df = pd.DataFrame({
+                            "Timeline Date": df["Date"].dt.strftime('%Y-%m-%d'),
+                            "Opening Balance": cl_open_list.astype(int),
+                            "Cleaned Demand Volume (Units)": demand_arr_main.astype(int),
+                            "Consolidated Stock Received (Units)": purchase_arr_main.astype(int),
+                            "Closing Balance": cl_close_list.astype(int)
+                        })
+                        
+                        st.dataframe(full_stock_card_df, use_container_width=True, hide_index=True, column_config={"Opening Balance": st.column_config.NumberColumn(format="%d"), "Cleaned Demand Volume (Units)": st.column_config.NumberColumn(format="%d"), "Consolidated Stock Received (Units)": st.column_config.NumberColumn(format="%d"), "Closing Balance": st.column_config.NumberColumn(format="%d")})
+
+                    st.subheader("4. Statistical Risk & Distribution Engines")
+                    
+                    annual_demand = avg_daily_demand_calc * 365
+                    annual_fixed_holding_per_unit = holding_fixed_daily * 365
+                    unit_holding_cost = annual_fixed_holding_per_unit + (item_unit_cost * holding_var_pct)
+                    
+                    risk_horizon_days = lead_time_days if review_system == "Continuous Review (Q, R)" else (user_p_days + lead_time_days)
+                    rolling_risk_demand = df["Demand_Qty"].rolling(window=int(risk_horizon_days)).sum().dropna().values
+                    risk_mean = np.mean(rolling_risk_demand) if len(rolling_risk_demand) > 0 else 0
+                    risk_std = np.std(rolling_risk_demand) if len(rolling_risk_demand) > 0 else 0
+
+                    if len(rolling_risk_demand) > 0:
+                        if np.max(rolling_risk_demand) <= 0:
+                            best_fit_name = "Zero Demand Base"
+                            raw_target_level = 0.0
+                        else:
+                            empirical_rop_raw = np.percentile(rolling_risk_demand, service_level * 100)
+                            safe_demand = np.where(rolling_risk_demand <= 0, 1e-5, rolling_risk_demand)
+                            
+                            log_params = stats.lognorm.fit(safe_demand, floc=0)
+                            gam_params = stats.gamma.fit(safe_demand, floc=0)
+
+                            counts, bins = np.histogram(rolling_risk_demand, bins=20, density=True)
+                            bin_centers = (bins[:-1] + bins[1:]) / 2
+                            
+                            rss_norm = np.sum((counts - stats.norm.pdf(bin_centers, loc=risk_mean, scale=risk_std)) ** 2)
+                            rss_log = np.sum((counts - stats.lognorm.pdf(bin_centers, *log_params)) ** 2)
+                            rss_gam = np.sum((counts - stats.gamma.pdf(bin_centers, *gam_params)) ** 2)
+
+                            if cov > 0.75:
+                                best_fit_name = "Empirical (Data-Driven)"
+                                raw_target_level = empirical_rop_raw
+                            else:
+                                errors = {"Normal": rss_norm, "Log-Normal": rss_log, "Gamma": rss_gam}
+                                best_fit_name = min(errors, key=errors.get)
+                                if best_fit_name == "Normal":
+                                    raw_target_level = stats.norm.ppf(service_level, loc=risk_mean, scale=risk_std)
+                                elif best_fit_name == "Log-Normal":
+                                    raw_target_level = stats.lognorm.ppf(service_level, *log_params)
+                                else:
+                                    raw_target_level = stats.gamma.ppf(service_level, *gam_params)
+                    else:
+                        best_fit_name = "Default (Insufficient Data)"
+                        raw_target_level = avg_daily_demand_calc * risk_horizon_days
+                        
+                    raw_optimal_q = np.sqrt((2 * annual_demand * ordering_cost) / max(0.01, unit_holding_cost))
+
+                    if "q_audit_suite" not in st.session_state:
+                        st.session_state.q_audit_suite = max(1, int(raw_optimal_q)) if review_system == "Continuous Review (Q, R)" else int(avg_daily_demand_calc * user_p_days)
+                    if "rop_audit_suite" not in st.session_state:
+                        st.session_state.rop_audit_suite = max(0, int(raw_target_level))
+
+                    with st.expander("📊 View Cleaned Demand Distribution & Best-Fit Curve Metrics", expanded=False):
+                        stat_col1, stat_col2, stat_col3 = st.columns(3)
+                        stat_col1.metric("Average Daily Demand", f"{avg_daily_demand_calc:.2f} units")
+                        stat_col2.metric("Coefficient of Variation (CV)", f"{cov:.2f}")
+                        stat_col3.metric("Engine Selection", f"✨ {best_fit_name}")
+                        st.markdown("---")
+                        hist_fig = go.Figure()
+                        hist_fig.add_trace(go.Histogram(x=df["Demand_Qty"], name="Historical Days", marker_color='#1F77B4', opacity=0.6))
+                        hist_fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="Demand Quantity (Units / Day)", yaxis_title="Frequency", margin=dict(l=40, r=40, t=10, b=40), height=300)
+                        st.plotly_chart(hist_fig, use_container_width=True)
+
+                    st.markdown("---")
+                    st.subheader("5. 🌪️ Erratic Demand & Empirical ROP Profiler")
+                    
+                    with st.expander("Open Rolling Window & Empirical Profiler", expanded=False):
+                        st.markdown(
+                            "Standard safety stock math assumes demand follows a predictable bell curve. For erratic or lumpy demand, "
+                            "that assumption breaks down. This tool mechanically profiles your exact historical risk by analyzing every "
+                            "rolling vulnerability window in your dataset."
+                        )
+                        
+                        tab_emp_cont, tab_emp_per = st.tabs(["📉 Continuous Review (ROP)", "⏳ Periodic Review (Target Level)"])
+                        
+                        with tab_emp_cont:
+                            st.markdown("##### Continuous Review Risk Profiler")
+                            col_emp1, col_emp2, col_emp3 = st.columns(3)
+                            with col_emp1:
+                                emp_lt_window = st.number_input("Lead Time (Days)", min_value=1, value=int(lead_time_days), step=1, key="emp_lt_window")
+                            with col_emp2:
+                                emp_test_rop = st.number_input("Test Reorder Point (ROP)", min_value=0, value=int(raw_target_level), step=10, key="emp_test_rop")
+                            with col_emp3:
+                                emp_target_sl = st.number_input("Target Service Level (%)", min_value=1.0, max_value=99.9, value=95.0, step=0.5, key="emp_target_sl")
+
+                            rolling_demand_c = df["Demand_Qty"].rolling(window=emp_lt_window).sum().dropna()
+
+                            if len(rolling_demand_c) > 0:
+                                windows_below_rop = np.sum(rolling_demand_c <= emp_test_rop)
+                                total_windows_c = len(rolling_demand_c)
+                                achieved_sl_c = (windows_below_rop / total_windows_c) * 100
+                                required_rop = np.percentile(rolling_demand_c, emp_target_sl)
+
+                                res_col1, res_col2 = st.columns(2)
+                                with res_col1:
+                                    st.info(f"**Testing ROP of {emp_test_rop:,}:**\n\nOut of {total_windows_c:,} historical {emp_lt_window}-day windows, the total demand was successfully covered by {emp_test_rop:,} units exactly **{windows_below_rop:,} times**. This yields an empirical service level of **{achieved_sl_c:.1f}%**.")
+                                with res_col2:
+                                    st.success(f"**Targeting {emp_target_sl}% Service Level:**\n\nTo mechanically guarantee that you don't stock out in {emp_target_sl}% of all historical {emp_lt_window}-day scenarios, your ROP must be set to the empirical percentile: **{int(required_rop):,} units**.")
+
+                                emp_fig_c = go.Figure()
+                                emp_fig_c.add_trace(go.Histogram(x=rolling_demand_c, nbinsx=40, marker_color='#B0C4DE', name=f"Historical {emp_lt_window}-Day Windows"))
+                                emp_fig_c.add_vline(x=emp_test_rop, line_width=2, line_dash="dash", line_color="#FF4B4B", annotation_text=f"Tested ROP ({emp_test_rop})", annotation_position="top right")
+                                emp_fig_c.add_vline(x=required_rop, line_width=2, line_dash="dash", line_color="#1F77B4", annotation_text=f"Target ROP ({int(required_rop)})", annotation_position="top left")
+
+                                emp_fig_c.update_layout(title=f"Actual Demand Distribution Across All {emp_lt_window}-Day Windows", xaxis_title=f"Total Units Demanded in a {emp_lt_window}-Day Window", yaxis_title="Frequency", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=400, margin=dict(t=40, b=40))
+                                st.plotly_chart(emp_fig_c, use_container_width=True)
+                            else:
+                                st.warning(f"⚠️ Not enough data to calculate rolling windows for a {emp_lt_window}-day lead time.")
+
+                        with tab_emp_per:
+                            st.markdown("##### Periodic Review Risk Profiler")
+                            default_p_val = int(user_p_days) if user_p_days > 1 else 14
+                            default_t_val = int(raw_target_level + (avg_daily_demand_calc * default_p_val))
+                            
+                            p_col1, p_col2, p_col3, p_col4 = st.columns(4)
+                            with p_col1:
+                                emp_p_days = st.number_input("Review Period (P)", min_value=1, value=default_p_val, step=1, key="emp_p_days")
+                            with p_col2:
+                                emp_p_lt = st.number_input("Lead Time (Days)", min_value=1, value=int(lead_time_days), step=1, key="emp_p_lt")
+                            with p_col3:
+                                emp_test_t = st.number_input("Test Target Level (T)", min_value=0, value=default_t_val, step=10, key="emp_test_t")
+                            with p_col4:
+                                emp_target_sl_p = st.number_input("Target Service Level (%)", min_value=1.0, max_value=99.9, value=95.0, step=0.5, key="emp_target_sl_p")
+
+                            risk_window_days = emp_p_days + emp_p_lt
+                            rolling_demand_p = df["Demand_Qty"].rolling(window=risk_window_days).sum().dropna()
+
+                            if len(rolling_demand_p) > 0:
+                                windows_below_t = np.sum(rolling_demand_p <= emp_test_t)
+                                total_windows_p = len(rolling_demand_p)
+                                achieved_sl_p = (windows_below_t / total_windows_p) * 100
+                                required_t = np.percentile(rolling_demand_p, emp_target_sl_p)
+
+                                res_col3, res_col4 = st.columns(2)
+                                with res_col3:
+                                    st.info(f"**Testing Target (T) of {emp_test_t:,}:**\n\nOut of {total_windows_p:,} historical {risk_window_days}-day windows (P+L), demand was successfully covered by {emp_test_t:,} units exactly **{windows_below_t:,} times**. Empirical SL: **{achieved_sl_p:.1f}%**.")
+                                with res_col4:
+                                    st.success(f"**Targeting {emp_target_sl_p}% Service Level:**\n\nTo mechanically guarantee that you don't stock out in {emp_target_sl_p}% of all historical {risk_window_days}-day scenarios, your Target Level must be: **{int(required_t):,} units**.")
+
+                                emp_fig_p = go.Figure()
+                                emp_fig_p.add_trace(go.Histogram(x=rolling_demand_p, nbinsx=40, marker_color='#B0C4DE', name=f"Historical {risk_window_days}-Day Windows"))
+                                emp_fig_p.add_vline(x=emp_test_t, line_width=2, line_dash="dash", line_color="#FF4B4B", annotation_text=f"Tested Target ({emp_test_t})", annotation_position="top right")
+                                emp_fig_p.add_vline(x=required_t, line_width=2, line_dash="dash", line_color="#1F77B4", annotation_text=f"Required Target ({int(required_t)})", annotation_position="top left")
+
+                                emp_fig_p.update_layout(title=f"Actual Demand Distribution Across All {risk_window_days}-Day (P+L) Windows", xaxis_title=f"Total Units Demanded in a {risk_window_days}-Day Window", yaxis_title="Frequency", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=400, margin=dict(t=40, b=40))
+                                st.plotly_chart(emp_fig_p, use_container_width=True)
+                            else:
+                                st.warning(f"⚠️ Not enough data to calculate rolling windows for a {risk_window_days}-day (P+L) window.")
+
+                    st.markdown("---")
+                    st.subheader("6. Policy Control & Aging Parameters")
+                    
+                    adjust_col1, adjust_col2 = st.columns(2)
+                    with adjust_col1:
+                        if review_system == "Continuous Review (Q, R)":
+                            final_q = st.number_input("Target Order Quantity (Q)", min_value=1, step=10, key="q_audit_suite")
+                        else:
+                            cycle_demand_baseline = max(1, int(avg_daily_demand_calc * user_p_days))
+                            final_q = st.number_input("Average Target Batch Size (Q)", min_value=1, value=cycle_demand_baseline, step=10, disabled=True, key="q_audit_suite_disabled")
+                    with adjust_col2:
+                        final_buffer_target = st.number_input("Reorder Point (ROP) / Target Level (T)", min_value=0, step=10, key="rop_audit_suite")
+
+                    if review_system == "Continuous Review (Q, R)":
+                        st.info(f"🎯 **Engine-Calculated Benchmarks ({best_fit_name}):** Optimal Order Quantity (EOQ): **{int(raw_optimal_q):,}** units | Recommended Reorder Point (ROP): **{int(raw_target_level):,}** units.")
+                    else:
+                        st.info(f"🎯 **Engine-Calculated Benchmarks ({best_fit_name}):** Expected Cycle Batch Size: **{int(avg_daily_demand_calc * user_p_days):,}** units | Recommended Max Order Up-To Level (T): **{int(raw_target_level):,}** units.")
+
+                    optimal_p_days = max(1, int((final_q / max(0.1, avg_daily_demand_calc)))) if review_system == "Continuous Review (Q, R)" else int(user_p_days)
+
+                    # --- UI CONTAINERS TO ENFORCE RENDERING ORDER ---
+                    header_container = st.container()
+                    kpi_container = st.container()
+                    matrix_container = st.container()
+                    timeline_container = st.container()
+                    age_input_container = st.container()
+                    age_profile_container = st.container()
+                    drilldown_container = st.container()
+
+                    # 1. Capture the age bucket definitions (renders physically in the 5th container, evaluates here logically)
+                    with age_input_container:
+                        st.markdown("---")
+                        st.markdown("### 🕰️ Inventory Age Profile (FIFO Stacked)")
+                        st.markdown("Visualize what fraction of your total inventory sitting in the warehouse belongs to distinct aging brackets over time.")
+                        bucket_input = st.text_input("Define custom inventory age thresholds in days (comma-separated, e.g., '15, 30, 45, 60, 90')", value="30, 60, 90")
+                        
+                    try:
+                        custom_edges = sorted(list(set([int(x.strip()) for x in bucket_input.split(',') if x.strip().isdigit()])))
+                        if not custom_edges: custom_edges = [30, 60, 90]
+                    except:
+                        custom_edges = [30, 60, 90]
+
+                    bucket_labels = []
+                    prev_edge = 0
+                    for edge in custom_edges:
+                        bucket_labels.append(f"{prev_edge}-{edge} Days")
+                        prev_edge = edge + 1
+                    bucket_labels.append(f"{prev_edge}+ Days")
+
+                    num_buckets = len(bucket_labels)
+                    
+                    if num_buckets == 1:
+                        bucket_colors = ["#8EC9FF"]
+                    else:
+                        bucket_colors = px.colors.sample_colorscale(
+                            [
+                                [0.0, "#8EC9FF"],
+                                [0.4, "#1E88E5"],
+                                [0.7, "#FFA726"],
+                                [1.0, "#E53935"]
+                            ],
+                            [i/(num_buckets-1) for i in range(num_buckets)]
+                        )
+
+                    # 2. RUN SIMULATIONS (Hidden from UI, populates downstream components)
+                    with header_container:
+                        st.markdown("---")
+                        st.header("📊 Section A: Historical Backtest Audit")
+                        st.markdown("This analysis compares your **Historical Actuals** against our **Recommended Optimized Policy** under identical historical demand constraints to reveal operational friction.")
+
+                    # Actuals
+                    inv_levels_act, lost_sales_act_arr, orders_placed_act_arr, avg_age_act, max_age_act, buckets_act = fast_simulate_inventory(
+                        demand_arr_main, purchase_arr_main, opening_stock_override, lead_time_days, "Actual", 0, 0, custom_edges
+                    )
+                    
+                    # Optimized
+                    inv_levels_opt, lost_sales_opt_arr, orders_placed_opt_arr, avg_age_opt, max_age_opt, buckets_opt = fast_simulate_inventory(
+                        demand_arr_main, purchase_arr_main, opening_stock_override, lead_time_days, review_system, 
+                        optimal_p_days if review_system != "Continuous Review (Q, R)" else final_q, final_buffer_target, custom_edges
+                    )
+
+                    # --- CALCULATE METRICS ---
+                    lost_sales_qty_act = lost_sales_act_arr.sum()
+                    stockout_days_act = np.count_nonzero(lost_sales_act_arr)
+                    zero_stock_days_act = np.count_nonzero(inv_levels_act == 0)
+                    
+                    actual_max_inventory = np.max(inv_levels_act)
+                    actual_min_inventory = np.min(inv_levels_act)
+                    actual_avg_inventory = np.mean(inv_levels_act)
+                    actual_fill_rate = max(0.0, 1.0 - (lost_sales_qty_act / max(1, total_demand)))
+                    actual_cycle_time = 365 / actual_orders_placed if actual_orders_placed > 0 else 365.0
+                    actual_avg_order_size = actual_total_units_purchased / actual_orders_placed if actual_orders_placed > 0 else 0.0
+
+                    actual_total_ordering_cost = actual_orders_placed * ordering_cost
+                    actual_total_holding_cost = actual_avg_inventory * unit_holding_cost
+                    actual_lost_sales_financial = lost_sales_qty_act * lost_sales_penalty
+                    actual_total_cost = actual_total_ordering_cost + actual_total_holding_cost + actual_lost_sales_financial
+                    actual_overall_avg_age = np.mean(avg_age_act)
+                    actual_overall_max_age = np.max(max_age_act)
+
+                    lost_sales_qty_opt = lost_sales_opt_arr.sum()
+                    stockout_days_opt = np.count_nonzero(lost_sales_opt_arr)
+                    zero_stock_days_opt = np.count_nonzero(inv_levels_opt == 0)
+                    opt_orders_placed = np.count_nonzero(orders_placed_opt_arr)
+                    policy_total_units_ordered = orders_placed_opt_arr.sum()
+
+                    simmed_avg_opt_inv = np.mean(inv_levels_opt)
+                    simmed_max_opt_inv = np.max(inv_levels_opt)
+                    simmed_min_inventory = np.min(inv_levels_opt)
+                    simmed_opt_fill_rate = max(0.0, 1.0 - (lost_sales_qty_opt / max(1, total_demand)))
+                    policy_cycle_time = 365 / opt_orders_placed if opt_orders_placed > 0 else 365.0
+                    policy_avg_order_size = policy_total_units_ordered / opt_orders_placed if opt_orders_placed > 0 else 0.0
+
+                    optimal_ordering_cost = opt_orders_placed * ordering_cost
+                    optimal_holding_cost = simmed_avg_opt_inv * unit_holding_cost
+                    optimal_lost_sales_financial = lost_sales_qty_opt * lost_sales_penalty
+                    optimal_total_cost = optimal_ordering_cost + optimal_holding_cost + optimal_lost_sales_financial
+                    opt_overall_avg_age = np.mean(avg_age_opt)
+                    opt_overall_max_age = np.max(max_age_opt)
+                    
+                    act_max_wc = actual_max_inventory * item_unit_cost
+                    act_avg_wc = actual_avg_inventory * item_unit_cost
+                    act_min_wc = actual_min_inventory * item_unit_cost
+                    
+                    opt_max_wc = simmed_max_opt_inv * item_unit_cost
+                    opt_avg_wc = simmed_avg_opt_inv * item_unit_cost
+                    opt_min_wc = simmed_min_inventory * item_unit_cost
+
+                    true_net_benefit = actual_total_cost - optimal_total_cost
+
+                    # 3. POPULATE UI CONTAINERS
+                    with kpi_container:
+                        if true_net_benefit > 0:
+                            st.success(f"### 🎯 The Efficiency Opportunity\nBy shifting to the recommended optimized policy, you would have recovered **${true_net_benefit:,.2f}** over this historical period.")
+                        else:
+                            st.error(f"⚠️ **Operational Margin Deficit Risk:** This setup increases operational overhead by **${abs(true_net_benefit):,.2f} / year** compared to actuals.")
+
+                        st.markdown("### 🏆 Executive Summary: Value Realization")
+                        cash_released = act_avg_wc - opt_avg_wc
+
+                        kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
+                        with kpi_col1: st.metric(label="Total Cost Saving", value=f"${true_net_benefit:,.0f}")
+                        with kpi_col2: st.metric(label="Optimized Fill Rate", value=f"{simmed_opt_fill_rate * 100:.1f}%")
+                        with kpi_col3:
+                            st.metric(label="Avg Working Capital (Opt)", value=f"${opt_avg_wc:,.0f}")
+                            st.markdown(f"<div style='margin-top: -15px; font-size: 0.85rem; color: gray;'>Historical: ${act_avg_wc:,.0f}</div>", unsafe_allow_html=True)
+                        with kpi_col4:
+                            release_label = "Cash Released" if cash_released >= 0 else "Capital Added (Tied Up)"
+                            # st.metric(label=release_label, value=f"${abs(cash_released):,.0f}")
+                            cash_released_pct = (cash_released / act_avg_wc) * 100 if act_avg_wc > 0 else 0.0
+                            st.metric(label=release_label, value=f"${abs(cash_released):,.0f}", delta=f"{cash_released_pct:+.1f}%")
+                        st.markdown("---")
+
+                    with matrix_container:
+                        def render_clustered_matrix(title, metrics, act_vals, pol_vals, formats):
+                            st.markdown(f"#### {title}")
+                            abs_var = [a - p for a, p in zip(act_vals, pol_vals)]
+                            pct_var = []
+                            for a, p in zip(act_vals, pol_vals):
+                                if a == 0: pct_var.append(0.0)
+                                else: pct_var.append(((a - p) / a) * 100)
+                                
+                            m_df = pd.DataFrame({"Operational Attribute Pillar": metrics})
+                            for idx in range(len(metrics)):
+                                fmt = formats[idx]
+                                if fmt == "currency":
+                                    m_df.at[idx, "Historical Actuals"] = f"${act_vals[idx]:,.2f}"
+                                    m_df.at[idx, "Optimized Policy"] = f"${pol_vals[idx]:,.2f}"
+                                    m_df.at[idx, "Net Delta Variance"] = f"${abs_var[idx]:,.2f}" if abs_var[idx] >= 0 else f"-${abs(abs_var[idx]):,.2f}"
+                                    m_df.at[idx, "% Impact Efficiency"] = f"{pct_var[idx]:+.1f}%"
+                                elif fmt == "pct":
+                                    m_df.at[idx, "Historical Actuals"] = f"{act_vals[idx]:.1f}%"
+                                    m_df.at[idx, "Optimized Policy"] = f"{pol_vals[idx]:.1f}%"
+                                    m_df.at[idx, "Net Delta Variance"] = f"{abs_var[idx]:+.1f}% pts"
+                                    m_df.at[idx, "% Impact Efficiency"] = f"{pol_vals[idx] - act_vals[idx]:+.1f}% pts"
+                                elif fmt == "days":
+                                    m_df.at[idx, "Historical Actuals"] = f"{act_vals[idx]:,.1f} days"
+                                    m_df.at[idx, "Optimized Policy"] = f"{pol_vals[idx]:,.1f} days"
+                                    m_df.at[idx, "Net Delta Variance"] = f"{abs_var[idx]:+,.1f} days"
+                                    m_df.at[idx, "% Impact Efficiency"] = f"{pct_var[idx]:+.1f}%"
+                                else:
+                                    m_df.at[idx, "Historical Actuals"] = f"{int(act_vals[idx]):,}"
+                                    m_df.at[idx, "Optimized Policy"] = f"{int(pol_vals[idx]):,}"
+                                    m_df.at[idx, "Net Delta Variance"] = f"{int(abs_var[idx]):+1,}"
+                                    m_df.at[idx, "% Impact Efficiency"] = f"{pct_var[idx]:+.1f}%"
+
+                            def apply_matrix_styles(x):
+                                colors = pd.DataFrame('', index=x.index, columns=x.columns)
+                                fav = 'background-color: #1A3E2B; color: #81C784; font-weight: bold;'
+                                unfav = 'background-color: #3E1A1A; color: #E57373;'
+                                for i, metric in enumerate(metrics):
+                                    v = abs_var[i]
+                                    if title == "1. Financial Breakdown Matrix" or title == "3. Working Capital Release Matrix":
+                                        if v > 0: colors.iloc[i, 3:] = fav
+                                        elif v < 0: colors.iloc[i, 3:] = unfav
+                                    elif title == "4. Stockout Risk & Vulnerability Matrix":
+                                        if "Fill Rate" in metric:
+                                            if pol_vals[i] > act_vals[i]: colors.iloc[i, 3:] = fav
+                                            elif pol_vals[i] < act_vals[i]: colors.iloc[i, 3:] = unfav
+                                        else:
+                                            if v > 0: colors.iloc[i, 3:] = fav
+                                            elif v < 0: colors.iloc[i, 3:] = unfav
+                                    elif title == "5. Inventory Age & Freshness Matrix (FIFO)":
+                                        if v > 0: colors.iloc[i, 3:] = fav   
+                                        elif v < 0: colors.iloc[i, 3:] = unfav
+                                return colors
+                            st.dataframe(m_df.style.apply(apply_matrix_styles, axis=None), use_container_width=True, hide_index=True)
+
+                        render_clustered_matrix("1. Financial Breakdown Matrix", ["Annual Ordering Fees ($)", "Annual Storage Carrying Cost ($)", "Financial Penalty from Stockouts ($)", "Total Policy Operating Cost ($)"], [actual_total_ordering_cost, actual_total_holding_cost, actual_lost_sales_financial, actual_total_cost], [optimal_ordering_cost, optimal_holding_cost, optimal_lost_sales_financial, optimal_total_cost], ["currency", "currency", "currency", "currency"])
+                        render_clustered_matrix("2. Logistical Operations Footprint Matrix", ["Average Volume Kept On-Hand", "Maximum Storage Spike Level", "Total Orders Dispatched", "Average Logistics Cycle Time", "Average Order Shipment Size"], [actual_avg_inventory, actual_max_inventory, actual_orders_placed, actual_cycle_time, actual_avg_order_size], [simmed_avg_opt_inv, simmed_max_opt_inv, opt_orders_placed, policy_cycle_time, policy_avg_order_size], ["units", "units", "count", "days", "units"])
+                        render_clustered_matrix("3. Working Capital Release Matrix", ["Peak Working Capital Tied Up ($)", "Average Working Capital Tied Up ($)", "Minimum Base Working Capital ($)"], [act_max_wc, act_avg_wc, act_min_wc], [opt_max_wc, opt_avg_wc, opt_min_wc], ["currency", "currency", "currency"])
+                        render_clustered_matrix("4. Stockout Risk & Vulnerability Matrix", ["Absolute Minimum Buffer Stock", "Stockout Events (Unfulfilled Days)", "Total Unfulfilled Deficit Volume", "Days with Absolute Zero Closing Stock", "Achieved Order Fill Rate (%)"], [actual_min_inventory, stockout_days_act, lost_sales_qty_act, zero_stock_days_act, actual_fill_rate * 100], [simmed_min_inventory, stockout_days_opt, lost_sales_qty_opt, zero_stock_days_opt, simmed_opt_fill_rate * 100], ["units", "count", "units", "count", "pct"])
+                        render_clustered_matrix("5. Inventory Age & Freshness Matrix (FIFO)", ["Overall Average Inventory Age (Days)", "Maximum Peak Inventory Age (Days)"], [actual_overall_avg_age, actual_overall_max_age], [opt_overall_avg_age, opt_overall_max_age], ["days", "days"])
+
+                    with timeline_container:
+                        st.markdown("---")
+                        st.markdown("### 📈 Tactical Operations Timeline Visualizations")
+                        timeline_fig = go.Figure()
+                        timeline_fig.add_trace(go.Scatter(x=df["Date"], y=inv_levels_act, name="Historical Actuals (Ledger)", line=dict(color='#B0C4DE', width=2), fill='tozeroy', fillcolor='rgba(176, 196, 222, 0.15)'))
+                        timeline_fig.add_trace(go.Scatter(x=df["Date"], y=inv_levels_opt, name=f"Recommended Optimized Policy ({best_fit_name.split(' ')[0]})", line=dict(color='#1F77B4', width=2.5)))
+                        timeline_fig.add_trace(go.Scatter(x=df["Date"], y=[max(0, raw_target_level - risk_mean)] * len(df), name="Calculated Safety Stock Floor", line=dict(color='#FF4B4B', width=1.5, dash='dot')))
+                        timeline_fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', xaxis_title="Timeline Date", yaxis_title="On-Hand Inventory (Units)", height=350, legend=dict(orientation="h", y=1.1, x=1, xanchor="right"))
+                        st.plotly_chart(timeline_fig, use_container_width=True)
+
+                    with age_profile_container:
+                        age_tab1, age_tab2 = st.tabs(["📉 Historical Actuals Age Profile", "⚙️ Optimized Policy Age Profile"])
+                        
+                        with age_tab1:
+                            fig_act_age = go.Figure()
+                            for j in range(len(bucket_labels)):
+                                fig_act_age.add_trace(go.Scatter(
+                                    x=df["Date"], y=buckets_act[:, j], name=bucket_labels[j],
+                                    mode='lines', stackgroup='one', line=dict(width=0.5, color=bucket_colors[j])
+                                ))
+                            fig_act_age.update_layout(template="plotly_white", yaxis_title="Units In Stock", xaxis_title="Date", height=350)
+                            st.plotly_chart(fig_act_age, use_container_width=True)
+                            
+                        with age_tab2:
+                            fig_opt_age = go.Figure()
+                            for j in range(len(bucket_labels)):
+                                fig_opt_age.add_trace(go.Scatter(
+                                    x=df["Date"], y=buckets_opt[:, j], name=bucket_labels[j],
+                                    mode='lines', stackgroup='one', line=dict(width=0.5, color=bucket_colors[j])
+                                ))
+                            fig_opt_age.update_layout(template="plotly_white", yaxis_title="Units In Stock", xaxis_title="Date", height=350)
+                            st.plotly_chart(fig_opt_age, use_container_width=True)
+
+                    with drilldown_container:
+                        st.markdown("---")
+                        st.markdown("### 🔍 Point-in-Time Inventory Age Drilldown")
+                        drilldown_date = st.date_input("Select specific date to inspect inventory age distribution", value=end_date, min_value=start_date, max_value=end_date)
+                        
+                        matched_row = df[df["Date"].dt.date == drilldown_date]
+                        if not matched_row.empty:
+                            idx_drill = matched_row.index[0]
+                            act_dist = buckets_act[idx_drill]
+                            opt_dist = buckets_opt[idx_drill]
+                            
+                            drill_df = pd.DataFrame({
+                                "Age Bracket": bucket_labels,
+                                "Historical Actuals (Units)": act_dist.astype(int),
+                                "Optimized Policy (Units)": opt_dist.astype(int)
+                            })
+                            
+                            col_chart, col_table = st.columns([2, 1])
+                            with col_chart:
+                                drill_fig = go.Figure()
+                                drill_fig.add_trace(go.Bar(x=bucket_labels, y=act_dist, name="Actuals", marker_color="#B0C4DE"))
+                                drill_fig.add_trace(go.Bar(x=bucket_labels, y=opt_dist, name="Optimized", marker_color="#1F77B4"))
+                                drill_fig.update_layout(barmode='group', title=f"Age Distribution on {drilldown_date}", yaxis_title="Units", template="plotly_white", margin=dict(t=40, b=20))
+                                st.plotly_chart(drill_fig, use_container_width=True)
+                                
+                            with col_table:
+                                st.markdown(f"**Exact Stock Counts:**")
+                                st.dataframe(drill_df, hide_index=True, use_container_width=True)
+
+                    # ==========================================
+                    #     SECTION B: COMPARATIVE ANALYSIS
+                    # ==========================================
+                    st.markdown("---")
+                    st.header("🔬 Section B: Multi-Scenario Comparative Analysis")
+                    st.markdown(
+                        "Leveraging the high-speed vectorized simulation engine, you can now backtest and compare up to 6 "
+                        "different inventory policies simultaneously. By adjusting these mechanical levers, you can easily identify "
+                        "operational blind spots without manually tracking the math."
+                    )
+                    
+                    active_scenarios_list = []
+                    
+                    tab_cont, tab_per = st.tabs(["📉 Continuous Review (Q, R) Scenarios", "⏳ Periodic Review (P, T) Scenarios"])
+                    
+                    with tab_cont:
+                        st.markdown(f"**Baseline Intelligence:** The data-driven optimal benchmark is **Q: {int(raw_optimal_q):,}** and **ROP: {int(raw_target_level):,}**.")
+                        
+                        c1, c2, c3 = st.columns(3)
+                        
+                        def create_cont_box(col, num, default_q, default_r):
+                            with col:
+                                st.markdown(f"##### 🎛️ Scenario C{num}")
+                                run_c = st.toggle(f"Include C{num} in Chart", key=f"run_c{num}", value=(num==1))
+                                q_val = st.number_input("Order Qty (Q)", min_value=1, value=int(default_q), step=10, key=f"q_c{num}")
+                                r_val = st.number_input("Reorder Point (ROP)", min_value=0, value=int(default_r), step=10, key=f"r_c{num}")
+                                
+                                if run_c:
+                                    active_scenarios_list.append({
+                                        "Case Name": f"C{num} (Q:{q_val}, R:{r_val})", 
+                                        "Policy Type": "Continuous Review (Q, R)", 
+                                        "P1": q_val, 
+                                        "P2": r_val
+                                    })
+
+                        create_cont_box(c1, 1, raw_optimal_q, raw_target_level)
+                        create_cont_box(c2, 2, raw_optimal_q * 1.5, raw_target_level)
+                        create_cont_box(c3, 3, raw_optimal_q, raw_target_level * 1.2)
+
+                    with tab_per:
+                        st.markdown("**Baseline Intelligence:** Adjust the Review Period (P) below. The engine will dynamically calculate a safe expected Target Level (T) for that exact timeframe.")
+                        
+                        p1, p2, p3 = st.columns(3)
+                        
+                        def create_per_box(col, num, default_p):
+                            with col:
+                                st.markdown(f"##### 🎛️ Scenario P{num}")
+                                run_p = st.toggle(f"Include P{num} in Chart", key=f"run_p{num}", value=False)
+                                p_val = st.number_input("Review Period (P Days)", min_value=1, value=int(default_p), step=1, key=f"p_p{num}")
+                                
+                                target_guide = int(raw_target_level + (avg_daily_demand_calc * p_val))
+                                
+                                t_val = st.number_input("Target Level (T)", min_value=0, value=target_guide, step=10, key=f"t_p{num}")
+                                st.caption(f"💡 *Engine recommended (T) for {p_val} days: **~{target_guide:,}***")
+                                
+                                if run_p:
+                                    active_scenarios_list.append({
+                                        "Case Name": f"P{num} (P:{p_val}, T:{t_val})", 
+                                        "Policy Type": "Periodic Review (P, T)", 
+                                        "P1": p_val, 
+                                        "P2": t_val
+                                    })
+
+                        create_per_box(p1, 1, 7)
+                        create_per_box(p2, 2, 14)
+                        create_per_box(p3, 3, 30)
+
+                    st.markdown("---")
+                    
+                    if st.button("🚀 Compare Scenarios", type="primary", use_container_width=True):
+                        if not active_scenarios_list:
+                            st.warning("Please toggle 'Include' for at least one scenario above to generate the comparison.")
+                        else:
+                            summary_data = []
+                            comp_fig = go.Figure()
+                            
+                            comp_fig.add_trace(go.Scatter(
+                                x=df["Date"], y=inv_levels_act, mode='lines', 
+                                name="Historical Actuals", line=dict(color='rgba(176, 196, 222, 0.4)', width=2, dash='dot')
+                            ))
+
+                            summary_data.append({
+                                "Scenario Blueprint": "📊 Historical Actuals (Baseline)",
+                                "Total Op Cost ($)": actual_total_cost,
+                                "Fill Rate (%)": actual_fill_rate * 100,
+                                "Avg Inv (Units)": actual_avg_inventory,
+                                "Avg Working Capital ($)": act_avg_wc,
+                                "Max Peak Capital ($)": act_max_wc,
+                                "Avg Age (Days)": np.mean(avg_age_act),
+                                "Peak Age (Days)": np.max(max_age_act)
+                            })
+
+                            line_colors = px.colors.qualitative.D3
+                            
+                            for index, scenario in enumerate(active_scenarios_list):
+                                case_name = scenario["Case Name"]
+                                p_type = scenario["Policy Type"]
+                                val1 = scenario["P1"]
+                                val2 = scenario["P2"]
+                                
+                                s_inv, s_lost, s_orders, s_avg_age, s_max_age, s_buckets = fast_simulate_inventory(
+                                    demand_arr_main, purchase_arr_main, opening_stock_override, 
+                                    lead_time_days, p_type, val1, val2, custom_edges
+                                )
+                                
+                                s_lost_sum = s_lost.sum()
+                                s_orders_count = np.count_nonzero(s_orders)
+                                s_avg_inv = np.mean(s_inv)
+                                s_max_inv = np.max(s_inv)
+                                
+                                s_fill_rate = max(0.0, 1.0 - (s_lost_sum / max(1, total_demand)))
+                                s_total_cost = (s_orders_count * ordering_cost) + (s_avg_inv * unit_holding_cost) + (s_lost_sum * lost_sales_penalty)
+                                
+                                summary_data.append({
+                                    "Scenario Blueprint": case_name,
+                                    "Total Op Cost ($)": s_total_cost,
+                                    "Fill Rate (%)": s_fill_rate * 100,
+                                    "Avg Inv (Units)": s_avg_inv,
+                                    "Avg Working Capital ($)": s_avg_inv * item_unit_cost,
+                                    "Max Peak Capital ($)": s_max_inv * item_unit_cost,
+                                    "Avg Age (Days)": np.mean(s_avg_age),
+                                    "Peak Age (Days)": np.max(s_max_age)
+                                })
+                                
+                                comp_fig.add_trace(go.Scatter(
+                                    x=df["Date"], y=s_inv, mode='lines', 
+                                    name=case_name, line=dict(color=line_colors[index % len(line_colors)], width=2.5)
+                                ))
+
+                            st.markdown("##### 🏆 Comparative Outcomes Scorecard")
+                            comp_df = pd.DataFrame(summary_data)
+                            
+                            def highlight_baseline(s):
+                                return ['background-color: rgba(176, 196, 222, 0.15)' if s['Scenario Blueprint'] == "📊 Historical Actuals (Baseline)" else '' for v in s]
+
+                            st.dataframe(
+                                comp_df.style.apply(highlight_baseline, axis=1),
+                                use_container_width=True, hide_index=True,
+                                column_config={
+                                    "Total Op Cost ($)": st.column_config.NumberColumn(format="$%.2f"),
+                                    "Fill Rate (%)": st.column_config.NumberColumn(format="%.1f%%"),
+                                    "Avg Inv (Units)": st.column_config.NumberColumn(format="%d"),
+                                    "Avg Working Capital ($)": st.column_config.NumberColumn(format="$%.0f"),
+                                    "Max Peak Capital ($)": st.column_config.NumberColumn(format="$%.0f"),
+                                    "Avg Age (Days)": st.column_config.NumberColumn(format="%.1f"),
+                                    "Peak Age (Days)": st.column_config.NumberColumn(format="%.0f")
+                                }
+                            )
+                            
+                            st.markdown("##### 📈 Strategic Trajectory Matrix")
+                            comp_fig.update_layout(
+                                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
+                                xaxis_title="Timeline Date", yaxis_title="On-Hand Inventory (Units)", 
+                                height=450, legend=dict(orientation="h", y=1.1, x=1, xanchor="right")
+                            )
+                            st.plotly_chart(comp_fig, use_container_width=True)
+
+
