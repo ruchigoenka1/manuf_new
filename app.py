@@ -810,6 +810,8 @@ with tab2:
 import io
 import plotly.graph_objects as go
 import plotly.express as px
+import scipy.stats as stats
+from scipy.stats import norm
 
 with tab3:
     st.header("Custom Data Analyzer")
