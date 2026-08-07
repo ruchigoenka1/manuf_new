@@ -9,3 +9,4 @@ pymoo
 numpy
 openpyxl
 xlsxwriter
+scipy
