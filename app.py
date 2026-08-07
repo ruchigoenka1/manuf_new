@@ -121,7 +121,7 @@ st.title("Inventory & Manufacturing App")
 # ... [Your existing Sidebar Code] ...
 
 # Add the tabs declaration here:
-tab1, tab2, tab3 = st.tabs(["Production Planning", "Demand Histogram Simulator", "Demand Analysis"])
+tab1, tab2, tab3, tab4 = st.tabs(["Production Planning", "Demand Histogram Simulator", "Demand Analysis", "Continous Review Policy"])
 
 
 with tab1:
