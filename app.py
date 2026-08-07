@@ -808,6 +808,8 @@ with tab2:
         st.plotly_chart(fig_inv, use_container_width=True)
 
 import io
+import plotly.graph_objects as go
+import plotly.express as px
 
 with tab3:
     st.header("Custom Data Analyzer")
@@ -1316,7 +1318,7 @@ with tab4:
         # Deep Dives (Expanders to conserve vertical space)
         with st.expander("📊 View Interactive Waterfall Analysis & Raw Data"):
             st.markdown("#### Inventory Flow Waterfall")
-            selected_day = st.slider("Select Day for Waterfall Analysis", 0, len(df)-1, 0, key="waterfall_slider")
+            selected_day = st.slider("Select Day for Waterfall Analysis", 0, len(df)-1, 0, key="waterfall_slider_t4")
             row = df.iloc[selected_day]
 
             fig_waterfall = go.Figure(go.Waterfall(
