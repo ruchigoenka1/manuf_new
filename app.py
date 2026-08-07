@@ -1079,28 +1079,29 @@ with tab4:
         st.subheader("⚙️ Parameters")
         
         st.markdown("**Basic Settings**")
-        opening_balance = st.number_input("Opening Balance", value=500, key="sim_ob")
-        unit_value = st.number_input("Value Per Unit", value=100, key="sim_vu")
-        num_days = st.slider("Simulation Days", 100, 2000, 365, key="sim_nd")
+        opening_balance = st.number_input("Opening Balance", value=500, key="sim_ob_t4")
+        unit_value = st.number_input("Value Per Unit", value=100, key="sim_vu_t4")
+        num_days = st.slider("Simulation Days", 100, 2000, 365, key="sim_nd_t4")
         
         st.markdown("**Demand Settings**")
-        avg_demand = st.number_input("Average Demand", value=25, key="sim_ad")
-        cov = st.number_input("Demand CoV", value=0.8, key="sim_cov")
+        avg_demand = st.number_input("Average Demand", value=25, key="sim_ad_t4")
+        cov = st.number_input("Demand CoV", value=0.8, key="sim_cov_t4")
         
         if "demand_sequence_tab4" not in st.session_state:
             st.session_state.demand_sequence_tab4 = None
 
-        if st.button("🔄 Generate New Demand", key="reset_dem", use_container_width=True):
+        if st.button("🔄 Generate New Demand", key="reset_dem_t4", use_container_width=True):
             st.session_state.demand_sequence_tab4 = None
             
         st.markdown("**Policy Settings**")
-        lead_time = st.number_input("Lead Time (Days)", value=3, key="sim_lt")
-        reorder_point = st.number_input("Reorder Point", value=200, key="sim_rp")
-        order_qty = st.number_input("Order Quantity", value=300, key="sim_oq")
+        # Fixed duplicate key here:
+        lead_time = st.number_input("Lead Time (Days)", value=3, key="sim_lt_t4")
+        reorder_point = st.number_input("Reorder Point", value=200, key="sim_rp_t4")
+        order_qty = st.number_input("Order Quantity", value=300, key="sim_oq_t4")
         
         st.markdown("**Cost Metrics**")
-        holding_cost_percent = st.number_input("Holding Cost (%)", value=20.0, key="sim_hc")
-        ordering_cost = st.number_input("Ordering Cost / Order", value=500, key="sim_oc")
+        holding_cost_percent = st.number_input("Holding Cost (%)", value=20.0, key="sim_hc_t4")
+        ordering_cost = st.number_input("Ordering Cost / Order", value=500, key="sim_oc_t4")
 
     # ================================================
     # BACKGROUND CALCULATIONS
