@@ -590,10 +590,20 @@ with tab2:
     np.random.seed(42)
     if dist_type == "Normal":
         generated = np.random.normal(avg_demand, variation, num_periods)
+        df_base = pd.DataFrame({'Base Demand': np.floor(np.clip(generated, 0, None))})
     elif dist_type == "Poisson":
         generated = np.random.poisson(avg_demand, num_periods)
-    else:
-        generated = np.random.uniform(avg_demand - variation, avg_demand + variation, num_periods)
+        df_base = pd.DataFrame({'Base Demand': np.floor(np.clip(generated, 0, None))})
+    else: # Uniform Distribution
+        # Calculate discrete bounds and ensure demand does not drop below 0
+        min_val = max(0, int(avg_demand - variation))
+        max_val = int(avg_demand + variation)
+        
+        # np.random.randint is exclusive at the upper bound, so we add 1 to include max_val
+        generated = np.random.randint(min_val, max_val + 1, num_periods)
+        df_base = pd.DataFrame({'Base Demand': generated})
+
+
     
     df_base = pd.DataFrame({'Base Demand': np.floor(np.clip(generated, 0, None))})
 
