@@ -1046,6 +1046,9 @@ with tab3:
 
 
 
+# ==========================================
+# TAB 4: CONTINUOUS REVIEW 
+# ==========================================
 with tab4:
     st.markdown(
         """
@@ -1064,7 +1067,7 @@ with tab4:
         unsafe_allow_html=True
     )
 
-    st.header("Inventory Policy Simulator")
+    st.header("Continuous Review")
     st.divider()
 
     # Main split layout
@@ -1085,11 +1088,11 @@ with tab4:
         avg_demand = st.number_input("Average Demand", value=25, key="sim_ad")
         cov = st.number_input("Demand CoV", value=0.8, key="sim_cov")
         
-        if "demand_sequence_tab3" not in st.session_state:
-            st.session_state.demand_sequence_tab3 = None
+        if "demand_sequence_tab4" not in st.session_state:
+            st.session_state.demand_sequence_tab4 = None
 
         if st.button("🔄 Generate New Demand", key="reset_dem", use_container_width=True):
-            st.session_state.demand_sequence_tab3 = None
+            st.session_state.demand_sequence_tab4 = None
             
         st.markdown("**Policy Settings**")
         lead_time = st.number_input("Lead Time (Days)", value=3, key="sim_lt")
@@ -1106,13 +1109,13 @@ with tab4:
     holding_cost_rate = holding_cost_percent / 100
     std_demand = avg_demand * cov
 
-    if st.session_state.demand_sequence_tab3 is None:
-        st.session_state.demand_sequence_tab3 = np.maximum(
+    if st.session_state.demand_sequence_tab4 is None:
+        st.session_state.demand_sequence_tab4 = np.maximum(
             0,
             np.random.normal(avg_demand, std_demand, num_days)
         ).round()
 
-    demand = st.session_state.demand_sequence_tab3
+    demand = st.session_state.demand_sequence_tab4
     dates = pd.date_range(start="2024-01-01", periods=num_days)
 
     inventory = opening_balance
@@ -1326,13 +1329,13 @@ with tab4:
             
             st.markdown("#### Simulation Output Table")
             st.dataframe(df, use_container_width=True)
-        
+
 
 # ==========================================
-# TAB 3: PERIODIC REVIEW (VECTORIZED LOGIC)
+# TAB 5: PERIODIC REVIEW
 # ==========================================
 with tab5:
-    st.header("🔄 Periodic Review Analysis (Target-Level System)")
+    st.header("Periodic Review")
     
     st.markdown("""
     In a periodic review system, inventory is checked at fixed intervals. The strategy must account for the mechanical reality of the **Protection Interval**—the time from when an order is placed until the *next* order can be placed and received.
@@ -1646,13 +1649,11 @@ with tab5:
         )
 
 
-
-
-
-
-
+# ==========================================
+# TAB 6: INVENTORY SIMULATOR
+# ==========================================
 with tab6:
-        st.header("⚖️ Advanced Inventory Optimization Suite")
+        st.header("Inventory Simulator")
         st.markdown(
             "Analyze your inventory data through a twin-lens framework. First, review a historical backtest audit "
             "to identify legacy profit leaks."
@@ -2591,5 +2592,3 @@ with tab6:
                                 height=450, legend=dict(orientation="h", y=1.1, x=1, xanchor="right")
                             )
                             st.plotly_chart(comp_fig, use_container_width=True)
-
-
