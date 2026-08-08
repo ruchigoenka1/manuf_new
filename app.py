@@ -2732,28 +2732,24 @@ with tab7:
                     max_inv = df_kpi['Closing Balance'].max()
                     avg_inv = df_kpi['Closing Balance'].mean()
                     
+                    # Row 1: Physical Units
+                    st.markdown("#### 📦 Physical Quantity")
                     kpi1, kpi2, kpi3 = st.columns(3)
+                    kpi1.metric("Minimum Inventory", f"{int(min_inv):,} Units")
+                    kpi2.metric("Maximum Inventory", f"{int(max_inv):,} Units")
+                    kpi3.metric("Average Inventory", f"{int(avg_inv):,} Units")
                     
-                    # Metric display with absolute physical units and total monetary values 
-                    # Streamlit automatically adds the arrow when a string is passed to the delta parameter
-                    kpi1.metric(
-                        label="Minimum Inventory", 
-                        value=f"{int(min_inv):,} Units", 
-                        delta=f"Value: ${min_inv * unit_value:,.0f}", 
-                        delta_color="off"
-                    )
-                    kpi2.metric(
-                        label="Maximum Inventory", 
-                        value=f"{int(max_inv):,} Units", 
-                        delta=f"Value: ${max_inv * unit_value:,.0f}", 
-                        delta_color="off"
-                    )
-                    kpi3.metric(
-                        label="Average Inventory", 
-                        value=f"{int(avg_inv):,} Units", 
-                        delta=f"Value: ${avg_inv * unit_value:,.0f}", 
-                        delta_color="off"
-                    )
+                    st.write("<br>", unsafe_allow_html=True) # Adds a little spacing
+                    
+                    # Row 2: Monetary Value
+                    st.markdown("#### 💰 Financial Value")
+                    val1, val2, val3 = st.columns(3)
+                    val1.metric("Minimum Capital Tied Up", f"${min_inv * unit_value:,.0f}")
+                    val2.metric("Peak Capital Tied Up", f"${max_inv * unit_value:,.0f}")
+                    val3.metric("Average Capital Tied Up", f"${avg_inv * unit_value:,.0f}")
+
+
+                
                 # --- 3. Visual Diagnostics ---
                 with chart_inv_container:
                     st.divider()
