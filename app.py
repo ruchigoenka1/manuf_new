@@ -2634,6 +2634,7 @@ with tab7:
                 chart_dem_container = st.container()
                 bucket_input_container = st.container()
                 chart_age_container = st.container()
+                drilldown_container = st.container()
                 table_container = st.container()
 
                 # --- Data Processing & Daily Resampling ---
@@ -2734,9 +2735,9 @@ with tab7:
                     kpi1, kpi2, kpi3 = st.columns(3)
                     
                     # Metric display with absolute physical units and total monetary values 
-                    kpi1.metric("Minimum Inventory", f"{int(min_inv):,} Units", f"${min_inv * unit_value:,.0f} Value", delta_color="off")
-                    kpi2.metric("Maximum Inventory", f"{int(max_inv):,} Units", f"${max_inv * unit_value:,.0f} Value", delta_color="off")
-                    kpi3.metric("Average Inventory", f"{int(avg_inv):,} Units", f"${avg_inv * unit_value:,.0f} Value", delta_color="off")
+                    kpi1.metric("Minimum Inventory", f"{int(min_inv):,} Units", f"Value: ${min_inv * unit_value:,.0f}", delta_color="off")
+                    kpi2.metric("Maximum Inventory", f"{int(max_inv):,} Units", f"Value: ${max_inv * unit_value:,.0f}", delta_color="off")
+                    kpi3.metric("Average Inventory", f"{int(avg_inv):,} Units", f"Value: ${avg_inv * unit_value:,.0f}", delta_color="off")
                 
                 # --- 3. Visual Diagnostics ---
                 with chart_inv_container:
@@ -2778,7 +2779,39 @@ with tab7:
                     fig_avg_age.update_layout(template="plotly_white", yaxis_title="Age (Days)", xaxis_title="Date", height=400, margin=dict(t=10, b=10))
                     st.plotly_chart(fig_avg_age, use_container_width=True)
 
-                # --- 4. Tables ---
+                # --- 4. Point-in-Time Drilldown ---
+                with drilldown_container:
+                    st.divider()
+                    st.markdown("### 🔍 Point-in-Time Inventory Age Drilldown")
+                    
+                    min_date = df_kpi['Date'].min().date()
+                    max_date = df_kpi['Date'].max().date()
+                    
+                    drilldown_date = st.date_input("Select specific date to inspect inventory age distribution", value=max_date, min_value=min_date, max_value=max_date, key="kpi_drilldown_date")
+                    
+                    matched_row = df_kpi[df_kpi["Date"].dt.date == drilldown_date]
+                    if not matched_row.empty:
+                        # Extract the exact values for the selected day based on the labels
+                        act_dist = [matched_row[label].iloc[0] for label in labels]
+                        
+                        drill_df = pd.DataFrame({
+                            "Age Bracket": labels,
+                            "Quantity (Units)": [int(x) for x in act_dist],
+                            "Value ($)": [f"${x * unit_value:,.2f}" for x in act_dist]
+                        })
+                        
+                        col_chart, col_table = st.columns([2, 1])
+                        with col_chart:
+                            drill_fig = go.Figure()
+                            drill_fig.add_trace(go.Bar(x=labels, y=act_dist, marker_color="#0673DF"))
+                            drill_fig.update_layout(title=f"Age Distribution on {drilldown_date}", yaxis_title="Units", template="plotly_white", margin=dict(t=40, b=20))
+                            st.plotly_chart(drill_fig, use_container_width=True)
+                            
+                        with col_table:
+                            st.markdown(f"**Exact Stock Counts:**")
+                            st.dataframe(drill_df, hide_index=True, use_container_width=True)
+
+                # --- 5. Tables ---
                 with table_container:
                     st.divider()
                     st.subheader("4. Detailed Aging Table (End of Period Snapshot)")
