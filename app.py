@@ -2610,16 +2610,10 @@ with tab7:
     
     # --- 1. Inputs ---
     st.subheader("1. Configuration & Data Upload")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        unit_value = st.number_input("Value Per Unit ($)", min_value=0.01, value=100.0, step=1.0, key="kpi_unit_val")
-    with col2:
-        # Defaulted to 158 to match your sample file's starting position
-        opening_stock = st.number_input("Opening Inventory Balance (Units)", min_value=0, value=158, step=10, key="kpi_open_bal")
-    with col3:
-        bucket_input = st.text_input("Age Buckets (Days, comma-separated)", value="30, 60, 90", key="kpi_buckets")
+    
+    unit_value = st.number_input("Value Per Unit ($)", min_value=0.01, value=100.0, step=1.0, key="kpi_unit_val")
         
-    uploaded_ledger = st.file_uploader("Upload Ledger (.xlsx or .csv) containing 'Date', 'Demand/Sales', 'Receiving'", type=["xlsx", "csv"], key="kpi_uploader")
+    uploaded_ledger = st.file_uploader("Upload Ledger (.xlsx or .csv) containing 'Date', 'Opening Balance', 'Demand/Sales', 'Receiving'", type=["xlsx", "csv"], key="kpi_uploader")
     
     if uploaded_ledger is not None:
         try:
@@ -2630,19 +2624,36 @@ with tab7:
                 
             df_kpi.columns = df_kpi.columns.str.strip()
             
-            # Check for required columns based on new format
-            required_cols = ['Date', 'Demand/Sales', 'Receiving']
+            required_cols = ['Date', 'Opening Balance', 'Demand/Sales', 'Receiving']
             if not all(col in df_kpi.columns for col in required_cols):
                 st.error(f"❌ The uploaded file must contain exactly these columns: {', '.join(required_cols)}")
             else:
+                # Setup visual containers to control exactly where UI elements render
+                kpi_container = st.container()
+                chart_inv_container = st.container()
+                chart_dem_container = st.container()
+                bucket_input_container = st.container()
+                chart_age_container = st.container()
+                table_container = st.container()
+
                 # --- Data Processing & Daily Resampling ---
                 df_kpi['Date'] = pd.to_datetime(df_kpi['Date'])
+                df_kpi = df_kpi.sort_values(by="Date").reset_index(drop=True)
+                
+                # Extract starting balance dynamically from the first row of the file
+                opening_stock = float(df_kpi['Opening Balance'].iloc[0])
                 
                 # Group by date to handle multiple entries on the same day
                 df_kpi = df_kpi.groupby('Date').agg({'Demand/Sales': 'sum', 'Receiving': 'sum'}).reset_index()
                 
                 # Resample to daily frequency to ensure time-based FIFO aging increments correctly
                 df_kpi = df_kpi.set_index('Date').resample('1D').asfreq().fillna(0).reset_index()
+                
+                # Place bucket input visually right before the age graph
+                with bucket_input_container:
+                    st.divider()
+                    st.subheader("Inventory Aging Breakdown")
+                    bucket_input = st.text_input("Define Age Buckets (Days, comma-separated)", value="30, 60, 90", key="kpi_buckets")
                 
                 # Parse Buckets
                 try:
@@ -2712,91 +2723,92 @@ with tab7:
                     df_kpi[label] = age_buckets_arr[:, j]
                     
                 # --- 2. KPIs ---
-                st.divider()
-                st.subheader("2. Inventory Performance Dashboard")
-                
-                min_inv = df_kpi['Closing Balance'].min()
-                max_inv = df_kpi['Closing Balance'].max()
-                avg_inv = df_kpi['Closing Balance'].mean()
-                
-                kpi1, kpi2, kpi3 = st.columns(3)
-                
-                # Metric display with absolute physical units and total monetary values 
-                kpi1.metric("Minimum Inventory", f"{int(min_inv):,} Units", f"${min_inv * unit_value:,.0f} Value", delta_color="off")
-                kpi2.metric("Maximum Inventory", f"{int(max_inv):,} Units", f"${max_inv * unit_value:,.0f} Value", delta_color="off")
-                kpi3.metric("Average Inventory", f"{int(avg_inv):,} Units", f"${avg_inv * unit_value:,.0f} Value", delta_color="off")
+                with kpi_container:
+                    st.divider()
+                    st.subheader("2. Inventory Performance Dashboard")
+                    
+                    min_inv = df_kpi['Closing Balance'].min()
+                    max_inv = df_kpi['Closing Balance'].max()
+                    avg_inv = df_kpi['Closing Balance'].mean()
+                    
+                    kpi1, kpi2, kpi3 = st.columns(3)
+                    
+                    # Metric display with absolute physical units and total monetary values 
+                    kpi1.metric("Minimum Inventory", f"{int(min_inv):,} Units", f"${min_inv * unit_value:,.0f} Value", delta_color="off")
+                    kpi2.metric("Maximum Inventory", f"{int(max_inv):,} Units", f"${max_inv * unit_value:,.0f} Value", delta_color="off")
+                    kpi3.metric("Average Inventory", f"{int(avg_inv):,} Units", f"${avg_inv * unit_value:,.0f} Value", delta_color="off")
                 
                 # --- 3. Visual Diagnostics ---
-                st.divider()
-                st.subheader("3. Visual Diagnostics")
-                
-                chart_col1, chart_col2 = st.columns(2)
-                
-                with chart_col1:
+                with chart_inv_container:
+                    st.divider()
+                    st.subheader("3. Visual Diagnostics")
                     st.markdown("#### Inventory Level Timeline")
                     fig_inv = go.Figure()
                     fig_inv.add_trace(go.Scatter(x=df_kpi['Date'], y=df_kpi['Closing Balance'], mode='lines', line=dict(color='#0673DF', width=2), name="Inventory Level", fill='tozeroy', fillcolor='rgba(6, 115, 223, 0.1)'))
-                    fig_inv.update_layout(template="plotly_white", yaxis_title="Units", xaxis_title="Date", height=350, margin=dict(t=10, b=10))
+                    fig_inv.update_layout(template="plotly_white", yaxis_title="Units", xaxis_title="Date", height=400, margin=dict(t=10, b=10))
                     st.plotly_chart(fig_inv, use_container_width=True)
                     
+                with chart_dem_container:
                     st.markdown("#### Demand Distribution")
                     fig_hist = px.histogram(df_kpi[df_kpi['Demand/Sales'] > 0], x="Demand/Sales", nbins=20, color_discrete_sequence=['#0673DF'])
-                    fig_hist.update_layout(template="plotly_white", yaxis_title="Frequency", xaxis_title="Daily Demand (Units)", height=350, margin=dict(t=10, b=10))
+                    fig_hist.update_layout(template="plotly_white", yaxis_title="Frequency", xaxis_title="Daily Demand (Units)", height=400, margin=dict(t=10, b=10))
                     st.plotly_chart(fig_hist, use_container_width=True)
                     
-                with chart_col2:
+                with chart_age_container:
                     st.markdown("#### FIFO Aging Profile")
                     fig_age = go.Figure()
                     
-                    # Blue outline design and stacked themes
-                    colors = ['#B3E5FC', '#4FC3F7', '#039BE5', '#0277BD', '#01579B'][:num_buckets]
-                    if num_buckets > len(colors):
-                        colors = px.colors.sequential.Blues[-num_buckets:]
+                    # Dynamically generate a blue-to-red scale based on the number of buckets
+                    if num_buckets == 1:
+                        colors = ['#0673DF']
+                    else:
+                        colors = px.colors.sample_colorscale('RdBu_r', [i/(num_buckets-1) for i in range(num_buckets)])
                     
                     for j, label in enumerate(labels):
                         fig_age.add_trace(go.Scatter(
                             x=df_kpi['Date'], y=df_kpi[label], name=label,
                             mode='lines', stackgroup='one', line=dict(width=1, color=colors[j])
                         ))
-                    fig_age.update_layout(template="plotly_white", yaxis_title="Units In Stock", xaxis_title="Date", height=350, margin=dict(t=10, b=10))
+                    fig_age.update_layout(template="plotly_white", yaxis_title="Units In Stock", xaxis_title="Date", height=450, margin=dict(t=10, b=10))
                     st.plotly_chart(fig_age, use_container_width=True)
                     
                     st.markdown("#### Average Inventory Age")
                     fig_avg_age = go.Figure()
                     fig_avg_age.add_trace(go.Scatter(x=df_kpi['Date'], y=df_kpi['Average Age (Days)'], mode='lines', line=dict(color='#0673DF', width=2), name="Avg Age (Days)"))
-                    fig_avg_age.update_layout(template="plotly_white", yaxis_title="Age (Days)", xaxis_title="Date", height=350, margin=dict(t=10, b=10))
+                    fig_avg_age.update_layout(template="plotly_white", yaxis_title="Age (Days)", xaxis_title="Date", height=400, margin=dict(t=10, b=10))
                     st.plotly_chart(fig_avg_age, use_container_width=True)
 
                 # --- 4. Tables ---
-                st.divider()
-                st.subheader("4. Detailed Aging Table (End of Period Snapshot)")
-                
-                # Snapshot of the very last chronological day available
-                latest_date = df_kpi['Date'].iloc[-1]
-                latest_row = df_kpi.iloc[-1]
-                
-                age_data = []
-                total_units = latest_row['Closing Balance']
-                
-                for label in labels:
-                    qty = latest_row[label]
-                    age_data.append({
-                        "Age Bracket": label,
-                        "Quantity (Units)": int(qty),
-                        "Value ($)": f"${qty * unit_value:,.2f}",
-                        "% of Total Inventory": f"{(qty / total_units * 100) if total_units > 0 else 0:.1f}%"
-                    })
+                with table_container:
+                    st.divider()
+                    st.subheader("4. Detailed Aging Table (End of Period Snapshot)")
                     
-                st.markdown(f"**Inventory Snapshot as of {latest_date.strftime('%Y-%m-%d')}**")
-                st.dataframe(pd.DataFrame(age_data), use_container_width=True, hide_index=True)
-                
-                with st.expander("📋 View Complete Daily Inventory Ledger"):
-                    # Format output columns to clean up float displays before showing
-                    display_df = df_kpi.copy()
-                    display_df['Date'] = display_df['Date'].dt.strftime('%Y-%m-%d')
-                    numeric_cols = display_df.select_dtypes(include=['float64']).columns
-                    display_df[numeric_cols] = display_df[numeric_cols].round(1)
-                    st.dataframe(display_df, use_container_width=True, hide_index=True)
+                    # Snapshot of the very last chronological day available
+                    latest_date = df_kpi['Date'].iloc[-1]
+                    latest_row = df_kpi.iloc[-1]
+                    
+                    age_data = []
+                    total_units = latest_row['Closing Balance']
+                    
+                    for label in labels:
+                        qty = latest_row[label]
+                        age_data.append({
+                            "Age Bracket": label,
+                            "Quantity (Units)": int(qty),
+                            "Value ($)": f"${qty * unit_value:,.2f}",
+                            "% of Total Inventory": f"{(qty / total_units * 100) if total_units > 0 else 0:.1f}%"
+                        })
+                        
+                    st.markdown(f"**Inventory Snapshot as of {latest_date.strftime('%Y-%m-%d')}**")
+                    st.dataframe(pd.DataFrame(age_data), use_container_width=True, hide_index=True)
+                    
+                    with st.expander("📋 View Complete Daily Inventory Ledger"):
+                        # Format output columns to clean up float displays before showing
+                        display_df = df_kpi.copy()
+                        display_df['Date'] = display_df['Date'].dt.strftime('%Y-%m-%d')
+                        numeric_cols = display_df.select_dtypes(include=['float64']).columns
+                        display_df[numeric_cols] = display_df[numeric_cols].round(1)
+                        st.dataframe(display_df, use_container_width=True, hide_index=True)
 
         except Exception as e:
             st.error(f"❌ Error processing file: {e}")
