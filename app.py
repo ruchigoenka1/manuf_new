@@ -2614,11 +2614,12 @@ with tab7:
     with col1:
         unit_value = st.number_input("Value Per Unit ($)", min_value=0.01, value=100.0, step=1.0, key="kpi_unit_val")
     with col2:
-        opening_stock = st.number_input("Opening Inventory Balance (Units)", min_value=0, value=1000, step=10, key="kpi_open_bal")
+        # Defaulted to 158 to match your sample file's starting position
+        opening_stock = st.number_input("Opening Inventory Balance (Units)", min_value=0, value=158, step=10, key="kpi_open_bal")
     with col3:
         bucket_input = st.text_input("Age Buckets (Days, comma-separated)", value="30, 60, 90", key="kpi_buckets")
         
-    uploaded_ledger = st.file_uploader("Upload Ledger (.xlsx or .csv) containing 'Date', 'Demand', 'Stock Received'", type=["xlsx", "csv"], key="kpi_uploader")
+    uploaded_ledger = st.file_uploader("Upload Ledger (.xlsx or .csv) containing 'Date', 'Demand/Sales', 'Receiving'", type=["xlsx", "csv"], key="kpi_uploader")
     
     if uploaded_ledger is not None:
         try:
@@ -2629,13 +2630,16 @@ with tab7:
                 
             df_kpi.columns = df_kpi.columns.str.strip()
             
-            if not all(col in df_kpi.columns for col in ['Date', 'Demand', 'Stock Received']):
-                st.error("❌ The uploaded file must contain exactly 'Date', 'Demand', and 'Stock Received' columns.")
+            # Check for required columns based on new format
+            required_cols = ['Date', 'Demand/Sales', 'Receiving']
+            if not all(col in df_kpi.columns for col in required_cols):
+                st.error(f"❌ The uploaded file must contain exactly these columns: {', '.join(required_cols)}")
             else:
                 # --- Data Processing & Daily Resampling ---
                 df_kpi['Date'] = pd.to_datetime(df_kpi['Date'])
+                
                 # Group by date to handle multiple entries on the same day
-                df_kpi = df_kpi.groupby('Date').agg({'Demand': 'sum', 'Stock Received': 'sum'}).reset_index()
+                df_kpi = df_kpi.groupby('Date').agg({'Demand/Sales': 'sum', 'Receiving': 'sum'}).reset_index()
                 
                 # Resample to daily frequency to ensure time-based FIFO aging increments correctly
                 df_kpi = df_kpi.set_index('Date').resample('1D').asfreq().fillna(0).reset_index()
@@ -2666,8 +2670,8 @@ with tab7:
                 fifo_queue = [[0, opening_stock]] if opening_stock > 0 else []
                 
                 for i in range(total_days):
-                    dem = df_kpi['Demand'].iloc[i]
-                    rec = df_kpi['Stock Received'].iloc[i]
+                    dem = df_kpi['Demand/Sales'].iloc[i]
+                    rec = df_kpi['Receiving'].iloc[i]
                     
                     if rec > 0:
                         fifo_queue.append([i, rec])
@@ -2736,7 +2740,7 @@ with tab7:
                     st.plotly_chart(fig_inv, use_container_width=True)
                     
                     st.markdown("#### Demand Distribution")
-                    fig_hist = px.histogram(df_kpi[df_kpi['Demand'] > 0], x="Demand", nbins=20, color_discrete_sequence=['#4F8BF9'])
+                    fig_hist = px.histogram(df_kpi[df_kpi['Demand/Sales'] > 0], x="Demand/Sales", nbins=20, color_discrete_sequence=['#0673DF'])
                     fig_hist.update_layout(template="plotly_white", yaxis_title="Frequency", xaxis_title="Daily Demand (Units)", height=350, margin=dict(t=10, b=10))
                     st.plotly_chart(fig_hist, use_container_width=True)
                     
@@ -2759,7 +2763,7 @@ with tab7:
                     
                     st.markdown("#### Average Inventory Age")
                     fig_avg_age = go.Figure()
-                    fig_avg_age.add_trace(go.Scatter(x=df_kpi['Date'], y=df_kpi['Average Age (Days)'], mode='lines', line=dict(color='#EF553B', width=2), name="Avg Age (Days)"))
+                    fig_avg_age.add_trace(go.Scatter(x=df_kpi['Date'], y=df_kpi['Average Age (Days)'], mode='lines', line=dict(color='#0673DF', width=2), name="Avg Age (Days)"))
                     fig_avg_age.update_layout(template="plotly_white", yaxis_title="Age (Days)", xaxis_title="Date", height=350, margin=dict(t=10, b=10))
                     st.plotly_chart(fig_avg_age, use_container_width=True)
 
