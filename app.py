@@ -2735,10 +2735,25 @@ with tab7:
                     kpi1, kpi2, kpi3 = st.columns(3)
                     
                     # Metric display with absolute physical units and total monetary values 
-                    kpi1.metric("Minimum Inventory", f"{int(min_inv):,} Units", f"Value: ${min_inv * unit_value:,.0f}", delta_color="off")
-                    kpi2.metric("Maximum Inventory", f"{int(max_inv):,} Units", f"Value: ${max_inv * unit_value:,.0f}", delta_color="off")
-                    kpi3.metric("Average Inventory", f"{int(avg_inv):,} Units", f"Value: ${avg_inv * unit_value:,.0f}", delta_color="off")
-                
+                    # Streamlit automatically adds the arrow when a string is passed to the delta parameter
+                    kpi1.metric(
+                        label="Minimum Inventory", 
+                        value=f"{int(min_inv):,} Units", 
+                        delta=f"Value: ${min_inv * unit_value:,.0f}", 
+                        delta_color="off"
+                    )
+                    kpi2.metric(
+                        label="Maximum Inventory", 
+                        value=f"{int(max_inv):,} Units", 
+                        delta=f"Value: ${max_inv * unit_value:,.0f}", 
+                        delta_color="off"
+                    )
+                    kpi3.metric(
+                        label="Average Inventory", 
+                        value=f"{int(avg_inv):,} Units", 
+                        delta=f"Value: ${avg_inv * unit_value:,.0f}", 
+                        delta_color="off"
+                    )
                 # --- 3. Visual Diagnostics ---
                 with chart_inv_container:
                     st.divider()
