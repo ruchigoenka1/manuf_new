@@ -2861,6 +2861,9 @@ with tab7:
 # ==========================================
 # TAB 8: CASH CONVERSION CYCLE MAP
 # ==========================================
+# ==========================================
+# TAB 8: CASH CONVERSION CYCLE MAP
+# ==========================================
 with tab8:
     st.header("Supply Chain & Cash Conversion Cycle Map")
     st.markdown("Define your end-to-end supply chain network below. The engine will automatically map the physical flow of inventory and calculate the Cash Conversion Cycle (CCC) across your network.")
@@ -2895,8 +2898,9 @@ with tab8:
         # Build the raw DOT string for Graphviz rendering
         dot_code = "digraph SupplyChain {\n"
         dot_code += '  rankdir=LR;\n' # Left to Right layout
-        dot_code += '  node [shape=box, style="filled,rounded", color="#0673DF", fillcolor="#0673DF", fontcolor=white, fontname="Helvetica", margin=0.2];\n'
-        dot_code += '  edge [color="#333333", penwidth=1.5];\n'
+        dot_code += '  bgcolor="transparent";\n'
+        dot_code += '  node [fontname="Helvetica", margin=0.2];\n'
+        dot_code += '  edge [color="#2563eb", penwidth=2.5];\n' # Solid blue arrows for main flow
         
         total_processing = 0
         total_credit = 0
@@ -2922,11 +2926,22 @@ with tab8:
             
             net_cycle = p_time - c_time
             
-            # Format the text that appears inside the map node
-            label = f"{name}\\n({inv_name})\\nLead: {p_time}d | Credit: {c_time}d\\nNet Cash Cycle: {net_cycle}d"
-            dot_code += f'  "{node_id}" [label="{label}"];\n'
+            # Formats for the Process (Rectangle) and Inventory (Triangle)
+            label_proc = f"{name}\\nLead: {p_time}d | Credit: {c_time}d\\nNet Cash Cycle: {net_cycle}d"
+            label_inv = f"{inv_name}"
             
-            # Process connections (edges)
+            # 1. Add Process Node (Light blue rounded rectangle with dark blue border)
+            dot_code += f'  "{node_id}" [label="{label_proc}", shape=rect, style="rounded,filled", fillcolor="#e0f2fe", color="#2563eb", penwidth=2, fontcolor="#0f172a"];\n'
+            
+            # 2. Add Inventory Node (Light blue triangle with dark blue border)
+            inv_node_id = f"inv_{node_id}"
+            dot_code += f'  "{inv_node_id}" [label="{label_inv}", shape=triangle, style="filled", fillcolor="#e0f2fe", color="#2563eb", penwidth=2, fontcolor="#0f172a"];\n'
+            
+            # 3. Force them to be vertically aligned and connect them with a dotted line
+            dot_code += f'  {{rank=same; "{node_id}"; "{inv_node_id}"}}\n'
+            dot_code += f'  "{node_id}" -> "{inv_node_id}" [dir=none, style=dotted, color="#2563eb", penwidth=2];\n'
+            
+            # 4. Process primary connections (edges) between the process nodes
             predecessors = str(row["Preceding Node(s)"]).split(",")
             for pred in predecessors:
                 pred = pred.strip()
@@ -2947,6 +2962,7 @@ with tab8:
             kpi1, kpi2, kpi3 = st.columns(3)
             kpi1.metric("Total Gross Lead Time", f"{total_processing} Days")
             kpi2.metric("Total Supplier Credit", f"{total_credit} Days")
+            
             # Reverse the color so a lower/negative cash cycle is green (good) and high is red (bad)
             kpi3.metric("System Cash Conversion Cycle", f"{total_ccc} Days", delta=f"{total_ccc} Days of Capital Tied Up", delta_color="inverse")
             
