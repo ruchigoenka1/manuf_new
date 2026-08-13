@@ -2998,7 +2998,7 @@ with tab9:
     st.header("Inventory & Cash Flow Simulation & Scenario Analysis")
     st.markdown("Simulate daily operations and track the true **Cost of Capital** based on a strict **Cash Flow** approach, alongside multi-scenario optimization.")
     
-    # --- SIDEBAR / TOP CONFIGURATION FOR TAB 9 ---
+    # --- 1. BASE SIMULATION & FINANCIAL PARAMETERS ---
     st.subheader("1. Base Simulation & Financial Parameters")
     
     col_p1, col_p2, col_p3, col_p4 = st.columns(4)
@@ -3047,10 +3047,12 @@ with tab9:
         np.random.seed(42)
         d_demands = np.maximum(0, np.random.normal(ad, var, s_days))
         
-        max_buf = max(crx, cgiv, lt) + 1
-        deliveries = np.zeros(s_days + max_buf)
-        cash_out = np.zeros(s_days + max_buf)
-        cash_in = np.zeros(s_days + max_buf)
+        # FIX: Massively expanded buffer to prevent index errors with long credit/lead days
+        max_buf = int(s_days + max(crx, cgiv, lt) + 100)
+        
+        deliveries = np.zeros(max_buf)
+        cash_out = np.zeros(max_buf)
+        cash_in = np.zeros(max_buf)
         
         inv = init_inv
         on_ord = 0
@@ -3070,16 +3072,16 @@ with tab9:
             inv -= sold
             sales_arr[d] = sold
             
-            cash_in[d + cgiv] += sold * effective_uv
+            cash_in[d + int(cgiv)] += sold * effective_uv
             
             inv_pos = inv + on_ord
             placed_today = 0
             while inv_pos <= rop_val:
-                deliveries[d + lt] += o_qty
+                deliveries[d + int(lt)] += o_qty
                 on_ord += o_qty
                 inv_pos += o_qty
                 placed_today += 1
-                cash_out[d + crx] += o_qty * effective_uv
+                cash_out[d + int(crx)] += o_qty * effective_uv
                 
             inv_arr[d] = inv
             inv_pos_arr[d] = inv_pos
@@ -3126,7 +3128,7 @@ with tab9:
             "holding_cost": tot_holding + tot_capital,
             "ordering_cost": tot_ordering,
             "product_cost": total_product_cost,
-            "total_inventory_cost": total_inventory_cost,
+            "total_inventory_cost": total_inv_cost,
             "total_cost": total_system_cost,
             "df": df_sim
         }
@@ -3139,65 +3141,9 @@ with tab9:
         int(sim_days_t9), price_modifier_t9
     )
 
-    # --- 2. MULTI-SCENARIO BUILDER ---
+    # --- 2. BASELINE SIMULATION CHARTS ---
     st.markdown("---")
-    st.subheader("2. Multi-Scenario Configuration Matrix")
-    st.markdown("Define alternative supply chain parameters below to compare performance against your baseline configuration.")
-    
-    default_scenarios = pd.DataFrame({
-        "Scenario Name": ["Baseline", "Aggressive Supplier Credit", "Lean Lead Time", "Price Discount Push"],
-        "Supplier Credit (Days)": [credit_rx_t9, 60, credit_rx_t9, credit_rx_t9],
-        "Supplier Lead Time": [lead_time_t9, lead_time_t9, 30, lead_time_t9],
-        "Target Service Level (%)": [service_level_t9, service_level_t9, service_level_t9, service_level_t9],
-        "Price Modifier (%)": [price_modifier_t9, 0.0, 0.0, -5.0]
-    })
-    
-    if "t9_scenarios_df" not in st.session_state:
-        st.session_state.t9_scenarios_df = default_scenarios
-        
-    edited_scenarios = st.data_editor(
-        st.session_state.t9_scenarios_df,
-        num_rows="dynamic",
-        use_container_width=True,
-        key="t9_scenario_editor"
-    )
-    
-    if st.button("🚀 Run Multi-Scenario Analysis", type="primary", use_container_width=True):
-        scenario_results = []
-        
-        for idx, row in edited_scenarios.iterrows():
-            s_name = str(row["Scenario Name"])
-            s_crx = float(row["Supplier Credit (Days)"])
-            s_lt = int(row["Supplier Lead Time"])
-            s_sl = float(row["Target Service Level (%)"])
-            s_pm = float(row["Price Modifier (%)"])
-            
-            res = run_cash_flow_simulation(
-                avg_demand_t9, variation_t9, s_lt, unit_value_t9, 
-                physical_holding_cost_t9, cost_of_capital_pct_t9, ordering_cost_t9, 
-                s_crx, credit_given_t9, s_sl, opening_capital_t9, 
-                int(sim_days_t9), s_pm
-            )
-            
-            scenario_results.append({
-                "Scenario": s_name,
-                "Fill Rate (%)": f"{res['fill_rate']:.2f}%",
-                "Stockout Days": int(res['stockout_days']),
-                "Avg Inventory (Units)": int(res['avg_inventory']),
-                "Holding Cost ($)": f"${res['holding_cost']:,.0f}",
-                "Ordering Cost ($)": f"${res['ordering_cost']:,.0f}",
-                "Product Cost ($)": f"${res['product_cost']:,.0f}",
-                "Total Inventory Cost ($)": f"${res['total_inventory_cost']:,.0f}",
-                "Total System Cost ($)": f"${res['total_cost']:,.0f}"
-            })
-            
-        st.markdown("---")
-        st.subheader("3. Executive Scenario Scorecard")
-        st.dataframe(pd.DataFrame(scenario_results), use_container_width=True, hide_index=True)
-        
-    # --- 4. BASELINE SIMULATION CHARTS ---
-    st.markdown("---")
-    st.subheader("4. Baseline Simulation Deep-Dive")
+    st.subheader("2. Baseline Simulation Deep-Dive")
     
     b_col1, b_col2, b_col3, b_col4 = st.columns(4)
     b_col1.metric("Fill Rate", f"{base_res['fill_rate']:.2f}%")
@@ -3222,3 +3168,59 @@ with tab9:
         fig_b_cash.add_trace(go.Scatter(x=df_b["Day"], y=-df_b["Capital Deficit"], mode='none', fill='tozeroy', name='Capital Deficit (Borrowing)', fillcolor='rgba(214, 39, 40, 0.3)'))
         fig_b_cash.update_layout(xaxis_title="Days", yaxis_title="Available Cash ($)", hovermode="x unified", height=450)
         st.plotly_chart(fig_b_cash, use_container_width=True)
+
+    # --- 3. MULTI-SCENARIO BUILDER (COLUMNS & INPUT BOXES) ---
+    st.markdown("---")
+    st.subheader("3. Multi-Scenario Configuration Matrix")
+    st.markdown("Define alternative supply chain parameters using the input columns below to compare performance against your baseline configuration.")
+    
+    num_scenarios = st.slider("Select Number of Scenarios to Compare:", min_value=1, max_value=4, value=3, key="t9_num_scen")
+    
+    scenario_cols = st.columns(num_scenarios)
+    scenario_inputs = []
+    
+    default_names = ["Baseline", "Aggressive Credit", "Lean Lead Time", "Price Discount"]
+    default_crx = [credit_rx_t9, 60, credit_rx_t9, credit_rx_t9]
+    default_lt = [lead_time_t9, lead_time_t9, 30, lead_time_t9]
+    default_sl = [service_level_t9, service_level_t9, service_level_t9, service_level_t9]
+    default_pm = [price_modifier_t9, 0.0, 0.0, -5.0]
+
+    for i, col in enumerate(scenario_cols):
+        with col:
+            st.markdown(f"##### Scenario {i+1}")
+            s_name = st.text_input("Scenario Name", value=default_names[i], key=f"t9_name_{i}")
+            s_crx = st.number_input("Supplier Credit (Days)", min_value=0, value=int(default_crx[i]), key=f"t9_crx_{i}")
+            s_lt = st.number_input("Supplier Lead Time", min_value=1, value=int(default_lt[i]), key=f"t9_lt_{i}")
+            s_sl = st.number_input("Target Service Level (%)", min_value=50.0, max_value=99.99, value=float(default_sl[i]), step=0.1, key=f"t9_sl_{i}")
+            s_pm = st.number_input("Price Modifier (%)", value=float(default_pm[i]), step=1.0, key=f"t9_pm_{i}")
+            
+            scenario_inputs.append({
+                "Name": s_name, "Crx": s_crx, "Lt": s_lt, "Sl": s_sl, "Pm": s_pm
+            })
+
+    st.markdown("---")
+    if st.button("🚀 Run Multi-Scenario Analysis", type="primary", use_container_width=True, key="t9_run_scen_btn"):
+        scenario_results = []
+        
+        for sc in scenario_inputs:
+            res = run_cash_flow_simulation(
+                avg_demand_t9, variation_t9, sc["Lt"], unit_value_t9, 
+                physical_holding_cost_t9, cost_of_capital_pct_t9, ordering_cost_t9, 
+                sc["Crx"], credit_given_t9, sc["Sl"], opening_capital_t9, 
+                int(sim_days_t9), sc["Pm"]
+            )
+            
+            scenario_results.append({
+                "Scenario": sc["Name"],
+                "Fill Rate (%)": f"{res['fill_rate']:.2f}%",
+                "Stockout Days": int(res['stockout_days']),
+                "Avg Inventory (Units)": int(res['avg_inventory']),
+                "Holding Cost ($)": f"${res['holding_cost']:,.0f}",
+                "Ordering Cost ($)": f"${res['ordering_cost']:,.0f}",
+                "Product Cost ($)": f"${res['product_cost']:,.0f}",
+                "Total Inventory Cost ($)": f"${res['total_inventory_cost']:,.0f}",
+                "Total System Cost ($)": f"${res['total_cost']:,.0f}"
+            })
+            
+        st.markdown("##### 🏆 Executive Scenario Scorecard")
+        st.dataframe(pd.DataFrame(scenario_results), use_container_width=True, hide_index=True)
