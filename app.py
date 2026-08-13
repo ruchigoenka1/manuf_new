@@ -2900,10 +2900,24 @@ with tab8:
         dot_code += '  rankdir=LR;\n' # Left to Right layout
         dot_code += '  bgcolor="transparent";\n'
         dot_code += '  node [fontname="Helvetica", margin=0.2];\n'
-        dot_code += '  edge [color="#2563eb", penwidth=2.5];\n' # Solid blue arrows for main flow
+        dot_code += '  edge [penwidth=2.5];\n'
         
         total_processing = 0
         total_credit = 0
+        
+        # Define a color palette for the nodes (fill color, border color)
+        color_palette = [
+            ("#e0f2fe", "#0284c7"), # Blue
+            ("#dcfce7", "#16a34a"), # Green
+            ("#f3e8ff", "#9333ea"), # Purple
+            ("#ffedd5", "#ea580c"), # Orange
+            ("#fce7f3", "#db2777"), # Pink
+            ("#fef08a", "#ca8a04"), # Yellow
+            ("#ccfbf1", "#0d9488"), # Teal
+        ]
+        
+        # Store border colors to match the connecting arrows to their source
+        edge_colors = {}
         
         for index, row in edited_df.iterrows():
             node_id = str(row["Node ID"]).strip()
@@ -2923,30 +2937,33 @@ with tab8:
             
             total_processing += p_time
             total_credit += c_time
-            
             net_cycle = p_time - c_time
             
-            # Formats for the Process (Rectangle) and Inventory (Triangle)
+            # Select color from palette based on row index
+            fill_color, border_color = color_palette[index % len(color_palette)]
+            edge_colors[node_id] = border_color
+            
             label_proc = f"{name}\\nLead: {p_time}d | Credit: {c_time}d\\nNet Cash Cycle: {net_cycle}d"
             label_inv = f"{inv_name}"
             
-            # 1. Add Process Node (Light blue rounded rectangle with dark blue border)
-            dot_code += f'  "{node_id}" [label="{label_proc}", shape=rect, style="rounded,filled", fillcolor="#e0f2fe", color="#2563eb", penwidth=2, fontcolor="#0f172a"];\n'
+            # 1. Add Process Node (Rounded Rectangle)
+            dot_code += f'  "{node_id}" [label="{label_proc}", shape=rect, style="rounded,filled", fillcolor="{fill_color}", color="{border_color}", penwidth=2, fontcolor="#0f172a"];\n'
             
-            # 2. Add Inventory Node (Light blue triangle with dark blue border)
+            # 2. Add Inventory Node (Triangle)
             inv_node_id = f"inv_{node_id}"
-            dot_code += f'  "{inv_node_id}" [label="{label_inv}", shape=triangle, style="filled", fillcolor="#e0f2fe", color="#2563eb", penwidth=2, fontcolor="#0f172a"];\n'
+            dot_code += f'  "{inv_node_id}" [label="{label_inv}", shape=triangle, style="filled", fillcolor="{fill_color}", color="{border_color}", penwidth=2, fontcolor="#0f172a"];\n'
             
-            # 3. Force them to be vertically aligned and connect them with a dotted line
-            dot_code += f'  {{rank=same; "{node_id}"; "{inv_node_id}"}}\n'
-            dot_code += f'  "{node_id}" -> "{inv_node_id}" [dir=none, style=dotted, color="#2563eb", penwidth=2];\n'
+            # 3. Connect Process to its Inventory (Outputs)
+            dot_code += f'  "{node_id}" -> "{inv_node_id}" [style=dotted, color="{border_color}"];\n'
             
-            # 4. Process primary connections (edges) between the process nodes
+            # 4. Connect Previous Inventory to this Process (Inputs)
             predecessors = str(row["Preceding Node(s)"]).split(",")
             for pred in predecessors:
                 pred = pred.strip()
                 if pred and pred.lower() not in ["nan", "none", ""]:
-                    dot_code += f'  "{pred}" -> "{node_id}";\n'
+                    pred_edge_color = edge_colors.get(pred, "#333333")
+                    # Arrow flows from the preceding INVENTORY into the current PROCESS
+                    dot_code += f'  "inv_{pred}" -> "{node_id}" [color="{pred_edge_color}"];\n'
                     
         dot_code += "}\n"
         
