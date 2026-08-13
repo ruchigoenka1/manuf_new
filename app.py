@@ -2902,7 +2902,7 @@ with tab8:
         dot_code += '  bgcolor="transparent";\n'
         
         # Massively increased fontsize and margins to counteract Streamlit's auto-scaling
-        dot_code += '  node [fontname="Helvetica", fontsize=40, margin="0.8,0.5"];\n'
+        dot_code += '  node [fontname="Helvetica", fontsize=10, margin="0.8,0.5"];\n'
         
         # Made arrows thicker and larger to match the bigger text
         dot_code += '  edge [penwidth=4.0, arrowsize=1.5];\n'
