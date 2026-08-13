@@ -2900,7 +2900,7 @@ with tab8:
         dot_code += '  rankdir=LR;\n' # Left to Right layout
         dot_code += '  bgcolor="transparent";\n'
         # Increased fontsize to 16 and expanded margins to accommodate the larger text
-        dot_code += '  node [fontname="Helvetica", fontsize=16, margin="0.4,0.3"];\n'
+        dot_code += '  node [fontname="Helvetica", fontsize=20, margin="0.4,0.3"];\n'
         dot_code += '  edge [penwidth=2.5];\n'
         
         total_processing = 0
