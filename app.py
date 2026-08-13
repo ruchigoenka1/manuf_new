@@ -3108,6 +3108,8 @@ with tab9:
         
         # KPIs
         avg_inventory = df_sim["Inventory Units"].mean()
+        min_inventory = df_sim["Inventory Units"].min()
+        max_inventory = df_sim["Inventory Units"].max()
         tot_demand = df_sim["Demand"].sum()
         tot_sales = df_sim["Sales"].sum()
         fill_rate_val = (tot_sales / tot_demand) * 100 if tot_demand > 0 else 0
@@ -3124,6 +3126,8 @@ with tab9:
         
         return {
             "avg_inventory": avg_inventory,
+            "min_inventory": min_inventory,
+            "max_inventory": max_inventory,
             "fill_rate": fill_rate_val,
             "stockout_days": stockout_days_val,
             "holding_cost": tot_holding + tot_capital,
@@ -3205,7 +3209,10 @@ with tab9:
             def_eoq = max(1, int(np.sqrt((2 * (avg_demand_t9 * 365) * ordering_cost_t9) / max(0.01, def_hc))))
             
             s_rop = st.number_input("Reorder Point (ROP)", min_value=0, value=def_rop, key=f"t9_rop_{i}")
+            st.caption(f"💡 Recommended ROP: {def_rop:,}")
+            
             s_o_qty = st.number_input("Order Quantity", min_value=1, value=def_eoq, key=f"t9_oqty_{i}")
+            st.caption(f"💡 Recommended EOQ: {def_eoq:,}")
             
             scenario_inputs.append({
                 "Name": s_name, "Crx": s_crx, "Lt": s_lt, "Sl": s_sl, "Pm": s_pm, "Rop": s_rop, "OQty": s_o_qty
@@ -3214,11 +3221,19 @@ with tab9:
     st.markdown("---")
     if st.button("🚀 Run Multi-Scenario Analysis", type="primary", use_container_width=True, key="t9_run_scen_btn"):
         
-        # Setup transpose dictionary with metrics as rows
+        # Setup transpose dictionary with metrics as rows, incorporating input parameters and min/max
         scorecard_data = {
             "Metric": [
+                "Supplier Credit (Days)",
+                "Supplier Lead Time (Days)",
+                "Target Service Level (%)",
+                "Price Modifier (%)",
+                "Reorder Point (ROP)",
+                "Order Quantity (Q)",
                 "Fill Rate (%)",
                 "Stockout Days",
+                "Minimum Inventory (Units)",
+                "Maximum Inventory (Units)",
                 "Avg Inventory (Units)",
                 "Holding Cost ($)",
                 "Ordering Cost ($)",
@@ -3238,9 +3253,17 @@ with tab9:
             
             # Map results to their respective scenario column
             scorecard_data[sc["Name"]] = [
+                f"{int(sc['Crx'])}",
+                f"{int(sc['Lt'])}",
+                f"{sc['Sl']:.2f}%",
+                f"{sc['Pm']:.2f}%",
+                f"{int(sc['Rop']):,}",
+                f"{int(sc['OQty']):,}",
                 f"{res['fill_rate']:.2f}%",
-                int(res['stockout_days']),
-                int(res['avg_inventory']),
+                f"{int(res['stockout_days']):,}",
+                f"{int(res['min_inventory']):,}",
+                f"{int(res['max_inventory']):,}",
+                f"{int(res['avg_inventory']):,}",
                 f"${res['holding_cost']:,.0f}",
                 f"${res['ordering_cost']:,.0f}",
                 f"${res['product_cost']:,.0f}",
