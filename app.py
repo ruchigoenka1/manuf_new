@@ -124,7 +124,7 @@ if 'seed_counter' not in st.session_state:
     st.session_state.seed_counter = 42
 
 # Add the tabs declaration here:
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(["Production Planning", "Demand Histogram Simulator", "Demand Analysis", "Continous Review Policy Simulator", "Periodic Review policy Simulator", "Inventory Audit", "Inventory KPI", "Cash Conversion Cycle"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs(["Production Planning", "Demand Histogram Simulator", "Demand Analysis", "Continous Review Policy Simulator", "Periodic Review policy Simulator", "Inventory Audit", "Inventory KPI", "Testing", "Cash Conversion Cycle"])
 
 
 with tab1:
@@ -2989,3 +2989,236 @@ with tab8:
             st.write("<br>", unsafe_allow_html=True)
             st.markdown("#### Network Map")
             st.graphviz_chart(dot_code, use_container_width=True)
+
+
+# ==========================================
+# TAB 9: CASH FLOW & SCENARIO ANALYSIS
+# ==========================================
+with tab9:
+    st.header("Inventory & Cash Flow Simulation & Scenario Analysis")
+    st.markdown("Simulate daily operations and track the true **Cost of Capital** based on a strict **Cash Flow** approach, alongside multi-scenario optimization.")
+    
+    # --- SIDEBAR / TOP CONFIGURATION FOR TAB 9 ---
+    st.subheader("1. Base Simulation & Financial Parameters")
+    
+    col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+    with col_p1:
+        avg_demand_t9 = st.number_input("Average Daily Demand", min_value=1.0, value=50.0, key="t9_ad")
+        variation_t9 = st.number_input("Demand Variation (Std Dev)", min_value=0.0, value=10.0, key="t9_var")
+    with col_p2:
+        lead_time_t9 = st.number_input("Lead Time (Days)", min_value=1, value=60, key="t9_lt")
+        unit_value_t9 = st.number_input("Value of Product (Unit Cost $)", min_value=0.1, value=100.0, key="t9_uv")
+    with col_p3:
+        physical_holding_cost_t9 = st.number_input("Physical Holding Cost/Unit/Year ($)", min_value=0.0, value=10.0, key="t9_phc")
+        cost_of_capital_pct_t9 = st.number_input("Cost of Capital (Annual %)", min_value=0.0, value=12.0, key="t9_coc") / 100.0
+    with col_p4:
+        ordering_cost_t9 = st.number_input("Ordering Cost per Order ($)", min_value=1.0, value=250.0, key="t9_oc")
+        sim_days_t9 = st.number_input("Simulation Duration (Days)", min_value=30, value=365, step=30, key="t9_sd")
+
+    col_c1, col_c2, col_c3 = st.columns(3)
+    with col_c1:
+        opening_capital_t9 = st.number_input("Initial Cash Balance ($)", value=100000.0, step=5000.0, key="t9_ocash")
+        credit_rx_t9 = st.number_input("Supplier Credit (Days)", min_value=0, value=30, key="t9_crx")
+    with col_c2:
+        credit_given_t9 = st.number_input("Buyer Credit (Days)", min_value=0, value=15, key="t9_cgiv")
+        service_level_t9 = st.slider("Target Service Level (%)", min_value=50.0, max_value=99.99, value=95.0, step=0.1, key="t9_sl")
+    with col_c3:
+        price_modifier_t9 = st.number_input("Price Premium / Discount (%)", value=0.0, step=1.0, key="t9_pm", help="Positive for price markup, negative for discount.")
+
+    # --- SIMULATION FUNCTION HELPER ---
+    def run_cash_flow_simulation(ad, var, lt, uv, phc, coc, oc, crx, cgiv, sl, op_cap, s_days, p_mod):
+        z_s = stats.norm.ppf(sl / 100.0)
+        s_stock = z_s * var * np.sqrt(lt)
+        rec_rop = (ad * lt) + s_stock
+        
+        effective_uv = uv * (1 + (p_mod / 100.0))
+        base_cap_cost = effective_uv * coc
+        eoq_hc = phc + base_cap_cost
+        ann_dem = ad * 365
+        eoq_val = np.sqrt((2 * ann_dem * oc) / max(0.01, eoq_hc))
+        
+        rop_val = int(rec_rop)
+        o_qty = max(1, int(eoq_val))
+        
+        init_inv = rop_val + o_qty
+        init_inv_val = init_inv * effective_uv
+        eff_op_cash = op_cap - init_inv_val
+        
+        np.random.seed(42)
+        d_demands = np.maximum(0, np.random.normal(ad, var, s_days))
+        
+        max_buf = max(crx, cgiv, lt) + 1
+        deliveries = np.zeros(s_days + max_buf)
+        cash_out = np.zeros(s_days + max_buf)
+        cash_in = np.zeros(s_days + max_buf)
+        
+        inv = init_inv
+        on_ord = 0
+        
+        inv_arr = np.zeros(s_days)
+        inv_pos_arr = np.zeros(s_days)
+        sales_arr = np.zeros(s_days)
+        orders_arr = np.zeros(s_days)
+        
+        for d in range(s_days):
+            arrived = deliveries[d]
+            inv += arrived
+            on_ord -= arrived
+            
+            demand_today = d_demands[d]
+            sold = min(inv, demand_today)
+            inv -= sold
+            sales_arr[d] = sold
+            
+            cash_in[d + cgiv] += sold * effective_uv
+            
+            inv_pos = inv + on_ord
+            placed_today = 0
+            while inv_pos <= rop_val:
+                deliveries[d + lt] += o_qty
+                on_ord += o_qty
+                inv_pos += o_qty
+                placed_today += 1
+                cash_out[d + crx] += o_qty * effective_uv
+                
+            inv_arr[d] = inv
+            inv_pos_arr[d] = inv_pos
+            orders_arr[d] = placed_today
+            
+        df_sim = pd.DataFrame({
+            "Day": np.arange(1, s_days + 1),
+            "Demand": d_demands,
+            "Sales": sales_arr,
+            "Inventory Units": inv_arr,
+            "Orders Placed": orders_arr,
+            "Inventory Position": inv_pos_arr
+        })
+        
+        df_sim["Cash Inflow ($)"] = cash_in[:s_days]
+        df_sim["Cash Outflow ($)"] = cash_out[:s_days]
+        df_sim["Net Cash Flow ($)"] = df_sim["Cash Inflow ($)"] - df_sim["Cash Outflow ($)"]
+        df_sim["Running Cash"] = eff_op_cash + df_sim["Net Cash Flow ($)"].cumsum()
+        df_sim["Capital Deficit"] = np.maximum(0, -df_sim["Running Cash"])
+        
+        df_sim["Phys Holding Cost"] = df_sim["Inventory Units"] * (phc / 365.0)
+        df_sim["Capital Cost"] = df_sim["Capital Deficit"] * (coc / 365.0)
+        
+        # KPIs
+        avg_inventory = df_sim["Inventory Units"].mean()
+        tot_demand = df_sim["Demand"].sum()
+        tot_sales = df_sim["Sales"].sum()
+        fill_rate_val = (tot_sales / tot_demand) * 100 if tot_demand > 0 else 0
+        stockout_days_val = len(df_sim[df_sim["Demand"] > df_sim["Sales"]])
+        
+        tot_holding = df_sim["Phys Holding Cost"].sum()
+        tot_capital = df_sim["Capital Cost"].sum()
+        tot_orders = df_sim["Orders Placed"].sum()
+        tot_ordering = tot_orders * oc
+        
+        total_inv_cost = tot_holding + tot_capital + tot_ordering
+        total_product_cost = tot_sales * effective_uv
+        total_system_cost = total_inv_cost + total_product_cost
+        
+        return {
+            "avg_inventory": avg_inventory,
+            "fill_rate": fill_rate_val,
+            "stockout_days": stockout_days_val,
+            "holding_cost": tot_holding + tot_capital,
+            "ordering_cost": tot_ordering,
+            "product_cost": total_product_cost,
+            "total_inventory_cost": total_inventory_cost,
+            "total_cost": total_system_cost,
+            "df": df_sim
+        }
+
+    # Run Baseline
+    base_res = run_cash_flow_simulation(
+        avg_demand_t9, variation_t9, lead_time_t9, unit_value_t9, 
+        physical_holding_cost_t9, cost_of_capital_pct_t9, ordering_cost_t9, 
+        credit_rx_t9, credit_given_t9, service_level_t9, opening_capital_t9, 
+        int(sim_days_t9), price_modifier_t9
+    )
+
+    # --- 2. MULTI-SCENARIO BUILDER ---
+    st.markdown("---")
+    st.subheader("2. Multi-Scenario Configuration Matrix")
+    st.markdown("Define alternative supply chain parameters below to compare performance against your baseline configuration.")
+    
+    default_scenarios = pd.DataFrame({
+        "Scenario Name": ["Baseline", "Aggressive Supplier Credit", "Lean Lead Time", "Price Discount Push"],
+        "Supplier Credit (Days)": [credit_rx_t9, 60, credit_rx_t9, credit_rx_t9],
+        "Supplier Lead Time": [lead_time_t9, lead_time_t9, 30, lead_time_t9],
+        "Target Service Level (%)": [service_level_t9, service_level_t9, service_level_t9, service_level_t9],
+        "Price Modifier (%)": [price_modifier_t9, 0.0, 0.0, -5.0]
+    })
+    
+    if "t9_scenarios_df" not in st.session_state:
+        st.session_state.t9_scenarios_df = default_scenarios
+        
+    edited_scenarios = st.data_editor(
+        st.session_state.t9_scenarios_df,
+        num_rows="dynamic",
+        use_container_width=True,
+        key="t9_scenario_editor"
+    )
+    
+    if st.button("🚀 Run Multi-Scenario Analysis", type="primary", use_container_width=True):
+        scenario_results = []
+        
+        for idx, row in edited_scenarios.iterrows():
+            s_name = str(row["Scenario Name"])
+            s_crx = float(row["Supplier Credit (Days)"])
+            s_lt = int(row["Supplier Lead Time"])
+            s_sl = float(row["Target Service Level (%)"])
+            s_pm = float(row["Price Modifier (%)"])
+            
+            res = run_cash_flow_simulation(
+                avg_demand_t9, variation_t9, s_lt, unit_value_t9, 
+                physical_holding_cost_t9, cost_of_capital_pct_t9, ordering_cost_t9, 
+                s_crx, credit_given_t9, s_sl, opening_capital_t9, 
+                int(sim_days_t9), s_pm
+            )
+            
+            scenario_results.append({
+                "Scenario": s_name,
+                "Fill Rate (%)": f"{res['fill_rate']:.2f}%",
+                "Stockout Days": int(res['stockout_days']),
+                "Avg Inventory (Units)": int(res['avg_inventory']),
+                "Holding Cost ($)": f"${res['holding_cost']:,.0f}",
+                "Ordering Cost ($)": f"${res['ordering_cost']:,.0f}",
+                "Product Cost ($)": f"${res['product_cost']:,.0f}",
+                "Total Inventory Cost ($)": f"${res['total_inventory_cost']:,.0f}",
+                "Total System Cost ($)": f"${res['total_cost']:,.0f}"
+            })
+            
+        st.markdown("---")
+        st.subheader("3. Executive Scenario Scorecard")
+        st.dataframe(pd.DataFrame(scenario_results), use_container_width=True, hide_index=True)
+        
+    # --- 4. BASELINE SIMULATION CHARTS ---
+    st.markdown("---")
+    st.subheader("4. Baseline Simulation Deep-Dive")
+    
+    b_col1, b_col2, b_col3, b_col4 = st.columns(4)
+    b_col1.metric("Fill Rate", f"{base_res['fill_rate']:.2f}%")
+    b_col2.metric("Stockout Days", f"{base_res['stockout_days']}")
+    b_col3.metric("Average Inventory", f"{int(base_res['avg_inventory'])} Units")
+    b_col4.metric("Total System Cost", f"${base_res['total_cost']:,.0f}")
+    
+    t_tab1, t_tab2 = st.tabs(["📉 Baseline Inventory Movement", "💰 Baseline Cash Statement"])
+    
+    with t_tab1:
+        df_b = base_res['df']
+        fig_b_inv = go.Figure()
+        fig_b_inv.add_trace(go.Scatter(x=df_b["Day"], y=df_b["Inventory Units"], mode='lines', name='Inventory Level', line=dict(color='#1f77b4', width=2)))
+        fig_b_inv.add_trace(go.Scatter(x=df_b["Day"], y=df_b["Inventory Position"], mode='lines', name='Inventory Position', line=dict(color='#9467bd', dash='dot', width=2)))
+        fig_b_inv.update_layout(xaxis_title="Days", yaxis_title="Units", hovermode="x unified", height=450)
+        st.plotly_chart(fig_b_inv, use_container_width=True)
+        
+    with t_tab2:
+        fig_b_cash = go.Figure()
+        fig_b_cash.add_trace(go.Scatter(x=df_b["Day"], y=df_b["Running Cash"], mode='lines', name='Running Cash Balance', line=dict(color='#2ca02c', width=3)))
+        fig_b_cash.add_trace(go.Scatter(x=[df_b["Day"].min(), df_b["Day"].max()], y=[0, 0], mode='lines', name='Zero Line', line=dict(color='black', dash='solid')))
+        fig_b_cash.add_trace(go.Scatter(x=df_b["Day"], y=-df_b["Capital Deficit"], mode='none', fill='tozeroy', name='Capital Deficit (Borrowing)', fillcolor='rgba(214, 39, 40, 0.3)'))
+        fig_b_cash.update_layout(xaxis_title="Days", yaxis_title="Available Cash ($)", hovermode="x unified", height=450)
+        st.plotly_chart(fig_b_cash, use_container_width=True)
