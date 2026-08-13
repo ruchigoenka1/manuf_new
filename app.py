@@ -3199,15 +3199,16 @@ with tab9:
             s_sl = st.number_input("Target Service Level (%)", min_value=50.0, max_value=99.99, value=float(default_sl[i]), step=0.1, key=f"t9_sl_{i}")
             s_pm = st.number_input("Price Modifier (%)", value=float(default_pm[i]), step=1.0, key=f"t9_pm_{i}")
             
-            # Mathematically pre-calculate optimal ROP and EOQ to populate the inputs
-            z_score_val = stats.norm.ppf(default_sl[i] / 100.0)
-            safety_stock_val = z_score_val * variation_t9 * np.sqrt(default_lt[i])
-            def_rop = int((avg_demand_t9 * default_lt[i]) + safety_stock_val)
+            # Mathematically calculate optimal ROP and EOQ based on the LIVE inputs (s_sl, s_lt, s_pm)
+            z_score_val = stats.norm.ppf(s_sl / 100.0)
+            safety_stock_val = z_score_val * variation_t9 * np.sqrt(s_lt)
+            def_rop = int((avg_demand_t9 * s_lt) + safety_stock_val)
             
-            eff_uv = unit_value_t9 * (1 + (default_pm[i] / 100.0))
+            eff_uv = unit_value_t9 * (1 + (s_pm / 100.0))
             def_hc = physical_holding_cost_t9 + (eff_uv * cost_of_capital_pct_t9)
             def_eoq = max(1, int(np.sqrt((2 * (avg_demand_t9 * 365) * ordering_cost_t9) / max(0.01, def_hc))))
             
+            # Streamlit will remember manual overrides, but the caption always shows the exact math
             s_rop = st.number_input("Reorder Point (ROP)", min_value=0, value=def_rop, key=f"t9_rop_{i}")
             st.caption(f"💡 Recommended ROP: {def_rop:,}")
             
