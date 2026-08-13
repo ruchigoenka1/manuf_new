@@ -2894,14 +2894,18 @@ with tab8:
     )
     
     # --- 2. Map Generation & CCC Calculation ---
+    # --- 2. Map Generation & CCC Calculation ---
     if not edited_df.empty:
         # Build the raw DOT string for Graphviz rendering
         dot_code = "digraph SupplyChain {\n"
         dot_code += '  rankdir=LR;\n' # Left to Right layout
         dot_code += '  bgcolor="transparent";\n'
-        # Increased fontsize to 16 and expanded margins to accommodate the larger text
-        dot_code += '  node [fontname="Helvetica", fontsize=20, margin="0.4,0.3"];\n'
-        dot_code += '  edge [penwidth=2.5];\n'
+        
+        # Massively increased fontsize and margins to counteract Streamlit's auto-scaling
+        dot_code += '  node [fontname="Helvetica", fontsize=40, margin="0.8,0.5"];\n'
+        
+        # Made arrows thicker and larger to match the bigger text
+        dot_code += '  edge [penwidth=4.0, arrowsize=1.5];\n'
         
         total_processing = 0
         total_credit = 0
