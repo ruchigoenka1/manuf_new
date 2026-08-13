@@ -124,7 +124,7 @@ if 'seed_counter' not in st.session_state:
     st.session_state.seed_counter = 42
 
 # Add the tabs declaration here:
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Production Planning", "Demand Histogram Simulator", "Demand Analysis", "Continous Review Policy Simulator", "Periodic Review policy Simulator", "Inventory Audit", "Inventory KPI"])
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(["Production Planning", "Demand Histogram Simulator", "Demand Analysis", "Continous Review Policy Simulator", "Periodic Review policy Simulator", "Inventory Audit", "Inventory KPI", "Cash Conversion Cycle"])
 
 
 with tab1:
@@ -2856,3 +2856,99 @@ with tab7:
 
         except Exception as e:
             st.error(f"❌ Error processing file: {e}")
+
+# ==========================================
+# TAB 8: CASH CONVERSION CYCLE MAP
+# ==========================================
+with tab8:
+    st.header("Supply Chain & Cash Conversion Cycle Map")
+    st.markdown("Define your end-to-end supply chain network below. The engine will automatically map the physical flow of inventory and calculate the Cash Conversion Cycle (CCC) across your network.")
+    
+    # --- 1. Dynamic Table Input ---
+    st.subheader("1. Define Supply Chain Nodes")
+    st.info("💡 **Tip:** Use the 'Node ID' column to link processes together. To connect multiple suppliers to a single assembly point, enter multiple IDs separated by commas in the 'Preceding Node(s)' column (e.g., 'N1, N2').")
+    
+    # Initialize default starting data so the user has a template to work from
+    default_sc_data = pd.DataFrame({
+        "Node ID": ["N1", "N2", "N3", "N4"],
+        "Process / Supplier": ["Supplier A", "Supplier B", "Assembly Plant", "Distribution Center"],
+        "Inventory Name": ["Raw Material X", "Raw Material Y", "WIP Component", "Finished Goods"],
+        "Lead / Process Time (Days)": [30, 45, 10, 20],
+        "Credit Terms (Days)": [30, 60, 0, 0],
+        "Preceding Node(s)": ["", "", "N1, N2", "N3"]
+    })
+    
+    if "sc_map_data" not in st.session_state:
+        st.session_state.sc_map_data = default_sc_data
+        
+    # Data editor allows dynamic row addition/deletion
+    edited_df = st.data_editor(
+        st.session_state.sc_map_data,
+        num_rows="dynamic",
+        use_container_width=True,
+        key="sc_data_editor"
+    )
+    
+    # --- 2. Map Generation & CCC Calculation ---
+    st.divider()
+    st.subheader("2. Visual Network Map & Cash Cycle")
+    
+    if not edited_df.empty:
+        # Build the raw DOT string for Graphviz rendering
+        dot_code = "digraph SupplyChain {\n"
+        dot_code += '  rankdir=LR;\n' # Left to Right layout
+        dot_code += '  node [shape=box, style="filled,rounded", color="#0673DF", fillcolor="#0673DF", fontcolor=white, fontname="Helvetica", margin=0.2];\n'
+        dot_code += '  edge [color="#333333", penwidth=1.5];\n'
+        
+        total_processing = 0
+        total_credit = 0
+        
+        for index, row in edited_df.iterrows():
+            node_id = str(row["Node ID"]).strip()
+            if not node_id or node_id == "nan":
+                continue
+                
+            name = str(row["Process / Supplier"])
+            inv_name = str(row["Inventory Name"])
+            
+            # Safely parse numeric columns
+            p_time = pd.to_numeric(row["Lead / Process Time (Days)"], errors='coerce')
+            c_time = pd.to_numeric(row["Credit Terms (Days)"], errors='coerce')
+            p_time = 0 if pd.isna(p_time) else int(p_time)
+            c_time = 0 if pd.isna(c_time) else int(c_time)
+            
+            total_processing += p_time
+            total_credit += c_time
+            
+            net_cycle = p_time - c_time
+            
+            # Format the text that appears inside the map node
+            label = f"{name}\\n({inv_name})\\nLead: {p_time}d | Credit: {c_time}d\\nNet Cash Cycle: {net_cycle}d"
+            dot_code += f'  "{node_id}" [label="{label}"];\n'
+            
+            # Process connections (edges)
+            predecessors = str(row["Preceding Node(s)"]).split(",")
+            for pred in predecessors:
+                pred = pred.strip()
+                if pred and pred != "nan":
+                    dot_code += f'  "{pred}" -> "{node_id}";\n'
+                    
+        dot_code += "}\n"
+        
+        col_map, col_kpi = st.columns([5, 2])
+        
+        with col_map:
+            st.markdown("#### Network Map")
+            st.graphviz_chart(dot_code, use_container_width=True)
+            
+        with col_kpi:
+            st.markdown("#### Cumulative Metrics")
+            st.caption("Aggregated across all defined nodes in the table.")
+            
+            total_ccc = total_processing - total_credit
+            
+            st.metric("Total Gross Lead Time", f"{total_processing} Days")
+            st.metric("Total Supplier Credit", f"{total_credit} Days")
+            
+            # Reverse the color so a lower/negative cash cycle is green (good) and high is red (bad)
+            st.metric("System Cash Conversion Cycle", f"{total_ccc} Days", delta=f"{total_ccc} Days of Capital Tied Up", delta_color="inverse")
