@@ -3025,8 +3025,8 @@ with tab9:
     with col_c3:
         price_modifier_t9 = st.number_input("Price Premium / Discount (%)", value=0.0, step=1.0, key="t9_pm", help="Positive for price markup, negative for discount.")
 
-    # --- SIMULATION FUNCTION HELPER ---
-    def run_cash_flow_simulation(ad, var, lt, uv, phc, coc, oc, crx, cgiv, sl, op_cap, s_days, p_mod):
+   # --- SIMULATION FUNCTION HELPER ---
+    def run_cash_flow_simulation(ad, var, lt, uv, phc, coc, oc, crx, cgiv, sl, op_cap, s_days, p_mod, custom_rop=None, custom_o_qty=None):
         z_s = stats.norm.ppf(sl / 100.0)
         s_stock = z_s * var * np.sqrt(lt)
         rec_rop = (ad * lt) + s_stock
@@ -3037,8 +3037,9 @@ with tab9:
         ann_dem = ad * 365
         eoq_val = np.sqrt((2 * ann_dem * oc) / max(0.01, eoq_hc))
         
-        rop_val = int(rec_rop)
-        o_qty = max(1, int(eoq_val))
+        # Use custom inputs if provided, otherwise use mathematically optimal baseline
+        rop_val = int(custom_rop) if custom_rop is not None else int(rec_rop)
+        o_qty = max(1, int(custom_o_qty)) if custom_o_qty is not None else max(1, int(eoq_val))
         
         init_inv = rop_val + o_qty
         init_inv_val = init_inv * effective_uv
@@ -3047,7 +3048,7 @@ with tab9:
         np.random.seed(42)
         d_demands = np.maximum(0, np.random.normal(ad, var, s_days))
         
-        # FIX: Massively expanded buffer to prevent index errors with long credit/lead days
+        # Massively expanded buffer to prevent index errors with long credit/lead days
         max_buf = int(s_days + max(crx, cgiv, lt) + 100)
         
         deliveries = np.zeros(max_buf)
@@ -3133,7 +3134,7 @@ with tab9:
             "df": df_sim
         }
 
-    # Run Baseline
+    # Run Baseline (Using mathematical defaults)
     base_res = run_cash_flow_simulation(
         avg_demand_t9, variation_t9, lead_time_t9, unit_value_t9, 
         physical_holding_cost_t9, cost_of_capital_pct_t9, ordering_cost_t9, 
@@ -3194,33 +3195,58 @@ with tab9:
             s_sl = st.number_input("Target Service Level (%)", min_value=50.0, max_value=99.99, value=float(default_sl[i]), step=0.1, key=f"t9_sl_{i}")
             s_pm = st.number_input("Price Modifier (%)", value=float(default_pm[i]), step=1.0, key=f"t9_pm_{i}")
             
+            # Mathematically pre-calculate optimal ROP and EOQ to populate the inputs
+            z_score_val = stats.norm.ppf(default_sl[i] / 100.0)
+            safety_stock_val = z_score_val * variation_t9 * np.sqrt(default_lt[i])
+            def_rop = int((avg_demand_t9 * default_lt[i]) + safety_stock_val)
+            
+            eff_uv = unit_value_t9 * (1 + (default_pm[i] / 100.0))
+            def_hc = physical_holding_cost_t9 + (eff_uv * cost_of_capital_pct_t9)
+            def_eoq = max(1, int(np.sqrt((2 * (avg_demand_t9 * 365) * ordering_cost_t9) / max(0.01, def_hc))))
+            
+            s_rop = st.number_input("Reorder Point (ROP)", min_value=0, value=def_rop, key=f"t9_rop_{i}")
+            s_o_qty = st.number_input("Order Quantity", min_value=1, value=def_eoq, key=f"t9_oqty_{i}")
+            
             scenario_inputs.append({
-                "Name": s_name, "Crx": s_crx, "Lt": s_lt, "Sl": s_sl, "Pm": s_pm
+                "Name": s_name, "Crx": s_crx, "Lt": s_lt, "Sl": s_sl, "Pm": s_pm, "Rop": s_rop, "OQty": s_o_qty
             })
 
     st.markdown("---")
     if st.button("🚀 Run Multi-Scenario Analysis", type="primary", use_container_width=True, key="t9_run_scen_btn"):
-        scenario_results = []
+        
+        # Setup transpose dictionary with metrics as rows
+        scorecard_data = {
+            "Metric": [
+                "Fill Rate (%)",
+                "Stockout Days",
+                "Avg Inventory (Units)",
+                "Holding Cost ($)",
+                "Ordering Cost ($)",
+                "Product Cost ($)",
+                "Total Inventory Cost ($)",
+                "Total System Cost ($)"
+            ]
+        }
         
         for sc in scenario_inputs:
             res = run_cash_flow_simulation(
                 avg_demand_t9, variation_t9, sc["Lt"], unit_value_t9, 
                 physical_holding_cost_t9, cost_of_capital_pct_t9, ordering_cost_t9, 
                 sc["Crx"], credit_given_t9, sc["Sl"], opening_capital_t9, 
-                int(sim_days_t9), sc["Pm"]
+                int(sim_days_t9), sc["Pm"], custom_rop=sc["Rop"], custom_o_qty=sc["OQty"]
             )
             
-            scenario_results.append({
-                "Scenario": sc["Name"],
-                "Fill Rate (%)": f"{res['fill_rate']:.2f}%",
-                "Stockout Days": int(res['stockout_days']),
-                "Avg Inventory (Units)": int(res['avg_inventory']),
-                "Holding Cost ($)": f"${res['holding_cost']:,.0f}",
-                "Ordering Cost ($)": f"${res['ordering_cost']:,.0f}",
-                "Product Cost ($)": f"${res['product_cost']:,.0f}",
-                "Total Inventory Cost ($)": f"${res['total_inventory_cost']:,.0f}",
-                "Total System Cost ($)": f"${res['total_cost']:,.0f}"
-            })
+            # Map results to their respective scenario column
+            scorecard_data[sc["Name"]] = [
+                f"{res['fill_rate']:.2f}%",
+                int(res['stockout_days']),
+                int(res['avg_inventory']),
+                f"${res['holding_cost']:,.0f}",
+                f"${res['ordering_cost']:,.0f}",
+                f"${res['product_cost']:,.0f}",
+                f"${res['total_inventory_cost']:,.0f}",
+                f"${res['total_cost']:,.0f}"
+            ]
             
         st.markdown("##### 🏆 Executive Scenario Scorecard")
-        st.dataframe(pd.DataFrame(scenario_results), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(scorecard_data), use_container_width=True, hide_index=True)
