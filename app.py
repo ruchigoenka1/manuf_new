@@ -3146,6 +3146,21 @@ with tab9:
         int(sim_days_t9), price_modifier_t9
     )
 
+    # --- 2. BASELINE SIMULATION CHARTS ---
+    st.markdown("---")
+    st.subheader("2. Baseline Simulation Deep-Dive")
+    
+    # --- Operational Inventory KPIs ---
+    st.markdown("#### Operational Performance")
+    b_col1, b_col2, b_col3, b_col4, b_col5 = st.columns(5)
+    b_col1.metric("Fill Rate", f"{base_res['fill_rate']:.2f}%")
+    b_col2.metric("Stockout Days", f"{int(base_res['stockout_days'])}")
+    b_col3.metric("Min Physical Inv.", f"{int(base_res['min_inventory']):,} Units")
+    b_col4.metric("Max Physical Inv.", f"{int(base_res['max_inventory']):,} Units")
+    b_col5.metric("Avg Physical Inv.", f"{int(base_res['avg_inventory']):,} Units")
+    
+    st.write("<br>", unsafe_allow_html=True)
+    
     # --- CCC Breakdown Matrix ---
     st.markdown("#### Cash Conversion Cycle (CCC) Breakdown")
     
@@ -3170,7 +3185,7 @@ with tab9:
     net_cap_tied_up = avg_inv_val + avg_rec_val - avg_pay_val
     
     ccc_c1, ccc_c2, ccc_c3, ccc_c4, ccc_c5 = st.columns(5)
-    ccc_c1.metric("Avg Transit Inv.", f"{int(avg_transit_inv):,} Units", f"Value: ${avg_transit_val:,.0f}", delta_color="off")
+    ccc_c1.metric("Transit Inventory Days", f"{days_in_transit_owned:.1f} Days", f"Value: ${avg_transit_val:,.0f}", delta_color="off")
     ccc_c2.metric("Days Inventory Out (DIO)", f"{dio:.1f} Days", f"Total Inv: ${avg_inv_val:,.0f}", delta_color="off")
     ccc_c3.metric("Days Sales Out (DSO)", f"{dso:.1f} Days", f"Receivables: ${avg_rec_val:,.0f}", delta_color="off")
     ccc_c4.metric("Days Payable Out (DPO)", f"{dpo_adjusted:.1f} Days", f"Payables: ${avg_pay_val:,.0f}", delta_color="off")
