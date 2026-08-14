@@ -3262,25 +3262,39 @@ with tab9:
     st.markdown("---")
     if st.button("🚀 Run Multi-Scenario Analysis", type="primary", use_container_width=True, key="t9_run_scen_btn"):
         
-        # Setup transpose dictionary with metrics as rows, incorporating input parameters and min/max
-        scorecard_data = {
+        # Setup transpose dictionaries for the three tables
+        ops_cost_data = {
             "Metric": [
-                "Supplier Credit (Days)",
-                "Supplier Lead Time (Days)",
-                "Target Service Level (%)",
-                "Price Modifier (%)",
                 "Reorder Point (ROP)",
                 "Order Quantity (Q)",
                 "Fill Rate (%)",
                 "Stockout Days",
-                "Minimum Inventory (Units)",
-                "Maximum Inventory (Units)",
-                "Avg Inventory (Units)",
+                "Min Physical Inv. (Units)",
+                "Max Physical Inv. (Units)",
+                "Avg Physical Inv. (Units)",
                 "Holding Cost ($)",
                 "Ordering Cost ($)",
                 "Product Cost ($)",
-                "Total Inventory Cost ($)",
                 "Total System Cost ($)"
+            ]
+        }
+        
+        ccc_data = {
+            "Metric": [
+                "Transit Inventory (Days)",
+                "Days Inventory Out (DIO)",
+                "Days Sales Out (DSO)",
+                "Days Payable Out (DPO)",
+                "Cash Conversion Cycle (Days)"
+            ]
+        }
+        
+        wc_data = {
+            "Metric": [
+                "Avg Owned Inventory (Transit + Physical) ($)",
+                "Accounts Receivable ($)",
+                "Accounts Payable ($)",
+                "Net Working Capital Tied Up ($)"
             ]
         }
         
@@ -3292,12 +3306,26 @@ with tab9:
                 int(sim_days_t9), sc["Pm"], warm_up=int(warmup_days_t9), custom_rop=sc["Rop"], custom_o_qty=sc["OQty"]
             )
             
-            # Map results to their respective scenario column
-            scorecard_data[sc["Name"]] = [
-                f"{int(sc['Crx'])}",
-                f"{int(sc['Lt'])}",
-                f"{sc['Sl']:.2f}%",
-                f"{sc['Pm']:.2f}%",
+            # --- Dynamic CCC & Working Capital Calculations ---
+            eff_uv = unit_value_t9 * (1 + (sc["Pm"] / 100.0))
+            daily_cogs = avg_demand_t9 * eff_uv
+            
+            days_in_transit_owned = max(0, sc["Lt"] - sc["Crx"])
+            avg_transit_inv = avg_demand_t9 * days_in_transit_owned
+            total_owned_inv = res['avg_inventory'] + avg_transit_inv
+            
+            dio = total_owned_inv / avg_demand_t9 if avg_demand_t9 > 0 else 0
+            dso = credit_given_t9
+            dpo_adjusted = max(0, sc["Crx"] - sc["Lt"])
+            ccc = dio + dso - dpo_adjusted
+            
+            avg_inv_val = total_owned_inv * eff_uv
+            avg_rec_val = daily_cogs * dso
+            avg_pay_val = daily_cogs * dpo_adjusted
+            net_cap_tied_up = avg_inv_val + avg_rec_val - avg_pay_val
+            
+            # --- Map Results to Scenario Columns ---
+            ops_cost_data[sc["Name"]] = [
                 f"{int(sc['Rop']):,}",
                 f"{int(sc['OQty']):,}",
                 f"{res['fill_rate']:.2f}%",
@@ -3308,9 +3336,32 @@ with tab9:
                 f"${res['holding_cost']:,.0f}",
                 f"${res['ordering_cost']:,.0f}",
                 f"${res['product_cost']:,.0f}",
-                f"${res['total_inventory_cost']:,.0f}",
                 f"${res['total_cost']:,.0f}"
             ]
             
-        st.markdown("##### 🏆 Executive Scenario Scorecard")
-        st.dataframe(pd.DataFrame(scorecard_data), use_container_width=True, hide_index=True)
+            ccc_data[sc["Name"]] = [
+                f"{days_in_transit_owned:.1f}",
+                f"{dio:.1f}",
+                f"{dso:.1f}",
+                f"{dpo_adjusted:.1f}",
+                f"{ccc:.1f}"
+            ]
+            
+            wc_data[sc["Name"]] = [
+                f"${avg_inv_val:,.0f}",
+                f"${avg_rec_val:,.0f}",
+                f"${avg_pay_val:,.0f}",
+                f"${net_cap_tied_up:,.0f}"
+            ]
+            
+        # --- Render the Bifurcated Scorecard ---
+        st.markdown("### 🏆 Executive Scenario Scorecard")
+        
+        st.markdown("#### 1. Operational & Cost Performance")
+        st.dataframe(pd.DataFrame(ops_cost_data), use_container_width=True, hide_index=True)
+        
+        st.markdown("#### 2. Cash Conversion Cycle (Days)")
+        st.dataframe(pd.DataFrame(ccc_data), use_container_width=True, hide_index=True)
+        
+        st.markdown("#### 3. Average Working Capital ($)")
+        st.dataframe(pd.DataFrame(wc_data), use_container_width=True, hide_index=True)
