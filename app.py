@@ -3014,7 +3014,9 @@ with tab9:
     with col_p4:
         ordering_cost_t9 = st.number_input("Ordering Cost per Order ($)", min_value=1.0, value=250.0, key="t9_oc")
         sim_days_t9 = st.number_input("Simulation Duration (Days)", min_value=30, value=365, step=30, key="t9_sd")
+        warmup_days_t9 = st.number_input("Warm-up Period (Days)", min_value=0, max_value=int(sim_days_t9)-1, value=60, key="t9_wu")
 
+    
     col_c1, col_c2, col_c3 = st.columns(3)
     with col_c1:
         opening_capital_t9 = st.number_input("Initial Cash Balance ($)", value=100000.0, step=5000.0, key="t9_ocash")
@@ -3026,7 +3028,7 @@ with tab9:
         price_modifier_t9 = st.number_input("Price Premium / Discount (%)", value=0.0, step=1.0, key="t9_pm", help="Positive for price markup, negative for discount.")
 
    # --- SIMULATION FUNCTION HELPER ---
-    def run_cash_flow_simulation(ad, var, lt, uv, phc, coc, oc, crx, cgiv, sl, op_cap, s_days, p_mod, custom_rop=None, custom_o_qty=None):
+    def run_cash_flow_simulation(ad, var, lt, uv, phc, coc, oc, crx, cgiv, sl, op_cap, s_days, p_mod, warm_up=0, custom_rop=None, custom_o_qty=None):
         z_s = stats.norm.ppf(sl / 100.0)
         s_stock = z_s * var * np.sqrt(lt)
         rec_rop = (ad * lt) + s_stock
@@ -3037,7 +3039,6 @@ with tab9:
         ann_dem = ad * 365
         eoq_val = np.sqrt((2 * ann_dem * oc) / max(0.01, eoq_hc))
         
-        # Use custom inputs if provided, otherwise use mathematically optimal baseline
         rop_val = int(custom_rop) if custom_rop is not None else int(rec_rop)
         o_qty = max(1, int(custom_o_qty)) if custom_o_qty is not None else max(1, int(eoq_val))
         
@@ -3048,9 +3049,7 @@ with tab9:
         np.random.seed(42)
         d_demands = np.maximum(0, np.random.normal(ad, var, s_days))
         
-        # Massively expanded buffer to prevent index errors with long credit/lead days
         max_buf = int(s_days + max(crx, cgiv, lt) + 100)
-        
         deliveries = np.zeros(max_buf)
         cash_out = np.zeros(max_buf)
         cash_in = np.zeros(max_buf)
@@ -3106,18 +3105,22 @@ with tab9:
         df_sim["Phys Holding Cost"] = df_sim["Inventory Units"] * (phc / 365.0)
         df_sim["Capital Cost"] = df_sim["Capital Deficit"] * (coc / 365.0)
         
-        # KPIs
-        avg_inventory = df_sim["Inventory Units"].mean()
-        min_inventory = df_sim["Inventory Units"].min()
-        max_inventory = df_sim["Inventory Units"].max()
-        tot_demand = df_sim["Demand"].sum()
-        tot_sales = df_sim["Sales"].sum()
-        fill_rate_val = (tot_sales / tot_demand) * 100 if tot_demand > 0 else 0
-        stockout_days_val = len(df_sim[df_sim["Demand"] > df_sim["Sales"]])
+        # --- APPLY WARM-UP SLICE ---
+        # Exclude the early chaotic days from the KPI matrix calculations
+        df_kpi = df_sim.iloc[warm_up:].copy() if warm_up < s_days else df_sim.copy()
         
-        tot_holding = df_sim["Phys Holding Cost"].sum()
-        tot_capital = df_sim["Capital Cost"].sum()
-        tot_orders = df_sim["Orders Placed"].sum()
+        # KPIs now calculated exclusively on the stable period (df_kpi)
+        avg_inventory = df_kpi["Inventory Units"].mean()
+        min_inventory = df_kpi["Inventory Units"].min()
+        max_inventory = df_kpi["Inventory Units"].max()
+        tot_demand = df_kpi["Demand"].sum()
+        tot_sales = df_kpi["Sales"].sum()
+        fill_rate_val = (tot_sales / tot_demand) * 100 if tot_demand > 0 else 0
+        stockout_days_val = len(df_kpi[df_kpi["Demand"] > df_kpi["Sales"]])
+        
+        tot_holding = df_kpi["Phys Holding Cost"].sum()
+        tot_capital = df_kpi["Capital Cost"].sum()
+        tot_orders = df_kpi["Orders Placed"].sum()
         tot_ordering = tot_orders * oc
         
         total_inv_cost = tot_holding + tot_capital + tot_ordering
@@ -3135,15 +3138,15 @@ with tab9:
             "product_cost": total_product_cost,
             "total_inventory_cost": total_inv_cost,
             "total_cost": total_system_cost,
-            "df": df_sim
+            "df": df_sim # We return the full df so the visual charts still show day 0 onwards!
         }
 
-    # Run Baseline (Using mathematical defaults)
+    # Run Baseline (Passing the warm_up variable)
     base_res = run_cash_flow_simulation(
         avg_demand_t9, variation_t9, lead_time_t9, unit_value_t9, 
         physical_holding_cost_t9, cost_of_capital_pct_t9, ordering_cost_t9, 
         credit_rx_t9, credit_given_t9, service_level_t9, opening_capital_t9, 
-        int(sim_days_t9), price_modifier_t9
+        int(sim_days_t9), price_modifier_t9, warm_up=int(warmup_days_t9)
     )
 
     # --- 2. BASELINE SIMULATION CHARTS ---
@@ -3286,7 +3289,7 @@ with tab9:
                 avg_demand_t9, variation_t9, sc["Lt"], unit_value_t9, 
                 physical_holding_cost_t9, cost_of_capital_pct_t9, ordering_cost_t9, 
                 sc["Crx"], credit_given_t9, sc["Sl"], opening_capital_t9, 
-                int(sim_days_t9), sc["Pm"], custom_rop=sc["Rop"], custom_o_qty=sc["OQty"]
+                int(sim_days_t9), sc["Pm"], warm_up=int(warmup_days_t9), custom_rop=sc["Rop"], custom_o_qty=sc["OQty"]
             )
             
             # Map results to their respective scenario column
