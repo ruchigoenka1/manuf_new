@@ -3167,31 +3167,29 @@ with tab9:
     # --- CCC Breakdown Matrix ---
     st.markdown("#### Cash Conversion Cycle (CCC) Breakdown")
     
-    # Calculate Transit Inventory and Adjusted DPO
-    # Ownership transfers upon payment if paid before physical receipt
-    days_in_transit_owned = max(0, lead_time_t9 - credit_rx_t9)
-    avg_transit_inv = avg_demand_t9 * days_in_transit_owned
+    # Calculate Transit Inventory (Ownership transfers at dispatch)
+    avg_transit_inv = avg_demand_t9 * lead_time_t9
     total_owned_inv = base_res['avg_inventory'] + avg_transit_inv
     
     # Calculate daily COGS and CCC metrics
     daily_cogs = avg_demand_t9 * unit_value_t9
     dio = total_owned_inv / avg_demand_t9 if avg_demand_t9 > 0 else 0
     dso = credit_given_t9
-    dpo_adjusted = max(0, credit_rx_t9 - lead_time_t9) # DPO relative to physical receipt
-    ccc = dio + dso - dpo_adjusted
+    dpo = credit_rx_t9 # Full credit period recognized
+    ccc = dio + dso - dpo
     
     # Calculate monetary values
     avg_transit_val = avg_transit_inv * unit_value_t9
     avg_inv_val = total_owned_inv * unit_value_t9
     avg_rec_val = daily_cogs * dso
-    avg_pay_val = daily_cogs * dpo_adjusted
+    avg_pay_val = daily_cogs * dpo
     net_cap_tied_up = avg_inv_val + avg_rec_val - avg_pay_val
     
     ccc_c1, ccc_c2, ccc_c3, ccc_c4, ccc_c5 = st.columns(5)
-    ccc_c1.metric("Transit Inventory Days", f"{days_in_transit_owned:.1f} Days", f"Value: ${avg_transit_val:,.0f}", delta_color="off")
+    ccc_c1.metric("Transit Inventory Days", f"{lead_time_t9:.1f} Days", f"Value: ${avg_transit_val:,.0f}", delta_color="off")
     ccc_c2.metric("Days Inventory Out (DIO)", f"{dio:.1f} Days", f"Total Inv: ${avg_inv_val:,.0f}", delta_color="off")
     ccc_c3.metric("Days Sales Out (DSO)", f"{dso:.1f} Days", f"Receivables: ${avg_rec_val:,.0f}", delta_color="off")
-    ccc_c4.metric("Days Payable Out (DPO)", f"{dpo_adjusted:.1f} Days", f"Payables: ${avg_pay_val:,.0f}", delta_color="off")
+    ccc_c4.metric("Days Payable Out (DPO)", f"{dpo:.1f} Days", f"Payables: ${avg_pay_val:,.0f}", delta_color="off")
     ccc_c5.metric("Cash Conversion Cycle", f"{ccc:.1f} Days", f"Capital Tied: ${net_cap_tied_up:,.0f}", delta_color="inverse")
     
     st.write("<br>", unsafe_allow_html=True)
@@ -3310,18 +3308,18 @@ with tab9:
             eff_uv = unit_value_t9 * (1 + (sc["Pm"] / 100.0))
             daily_cogs = avg_demand_t9 * eff_uv
             
-            days_in_transit_owned = max(0, sc["Lt"] - sc["Crx"])
-            avg_transit_inv = avg_demand_t9 * days_in_transit_owned
+            # Ownership transfers at dispatch, so transit days = lead time
+            avg_transit_inv = avg_demand_t9 * sc["Lt"]
             total_owned_inv = res['avg_inventory'] + avg_transit_inv
             
             dio = total_owned_inv / avg_demand_t9 if avg_demand_t9 > 0 else 0
             dso = credit_given_t9
-            dpo_adjusted = max(0, sc["Crx"] - sc["Lt"])
-            ccc = dio + dso - dpo_adjusted
+            dpo = sc["Crx"] # Full credit period recognized
+            ccc = dio + dso - dpo
             
             avg_inv_val = total_owned_inv * eff_uv
             avg_rec_val = daily_cogs * dso
-            avg_pay_val = daily_cogs * dpo_adjusted
+            avg_pay_val = daily_cogs * dpo
             net_cap_tied_up = avg_inv_val + avg_rec_val - avg_pay_val
             
             # --- Map Results to Scenario Columns ---
@@ -3340,10 +3338,10 @@ with tab9:
             ]
             
             ccc_data[sc["Name"]] = [
-                f"{days_in_transit_owned:.1f}",
+                f"{float(sc['Lt']):.1f}",
                 f"{dio:.1f}",
                 f"{dso:.1f}",
-                f"{dpo_adjusted:.1f}",
+                f"{dpo:.1f}",
                 f"{ccc:.1f}"
             ]
             
