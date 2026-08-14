@@ -3194,23 +3194,26 @@ with tab9:
     
     st.write("<br>", unsafe_allow_html=True)
     
-    t_tab1, t_tab2 = st.tabs(["📉 Baseline Inventory Movement", "💰 Baseline Cash Statement"])
+    # --- Slice data for Post Warm-Up visualization ---
+    wu_days = int(warmup_days_t9)
+    s_days = int(sim_days_t9)
+    # Apply warm-up slice, but fallback to the full df if the user accidentally sets warmup >= total days
+    df_b = base_res['df'].iloc[wu_days:].copy() if wu_days < s_days else base_res['df'].copy()
     
-    with t_tab1:
-        df_b = base_res['df']
-        fig_b_inv = go.Figure()
-        fig_b_inv.add_trace(go.Scatter(x=df_b["Day"], y=df_b["Inventory Units"], mode='lines', name='Inventory Level', line=dict(color='#1f77b4', width=2)))
-        fig_b_inv.add_trace(go.Scatter(x=df_b["Day"], y=df_b["Inventory Position"], mode='lines', name='Inventory Position', line=dict(color='#9467bd', dash='dot', width=2)))
-        fig_b_inv.update_layout(xaxis_title="Days", yaxis_title="Units", hovermode="x unified", height=450)
-        st.plotly_chart(fig_b_inv, use_container_width=True)
-        
-    with t_tab2:
-        fig_b_cash = go.Figure()
-        fig_b_cash.add_trace(go.Scatter(x=df_b["Day"], y=df_b["Running Cash"], mode='lines', name='Running Cash Balance', line=dict(color='#2ca02c', width=3)))
-        fig_b_cash.add_trace(go.Scatter(x=[df_b["Day"].min(), df_b["Day"].max()], y=[0, 0], mode='lines', name='Zero Line', line=dict(color='black', dash='solid')))
-        fig_b_cash.add_trace(go.Scatter(x=df_b["Day"], y=-df_b["Capital Deficit"], mode='none', fill='tozeroy', name='Capital Deficit (Borrowing)', fillcolor='rgba(214, 39, 40, 0.3)'))
-        fig_b_cash.update_layout(xaxis_title="Days", yaxis_title="Available Cash ($)", hovermode="x unified", height=450)
-        st.plotly_chart(fig_b_cash, use_container_width=True)
+    st.markdown("#### 📉 Baseline Inventory Movement (Post Warm-up)")
+    fig_b_inv = go.Figure()
+    fig_b_inv.add_trace(go.Scatter(x=df_b["Day"], y=df_b["Inventory Units"], mode='lines', name='Inventory Level', line=dict(color='#1f77b4', width=2)))
+    fig_b_inv.add_trace(go.Scatter(x=df_b["Day"], y=df_b["Inventory Position"], mode='lines', name='Inventory Position', line=dict(color='#9467bd', dash='dot', width=2)))
+    fig_b_inv.update_layout(xaxis_title="Days", yaxis_title="Units", hovermode="x unified", height=450)
+    st.plotly_chart(fig_b_inv, use_container_width=True)
+    
+    st.markdown("#### 💰 Baseline Cash Statement (Post Warm-up)")
+    fig_b_cash = go.Figure()
+    fig_b_cash.add_trace(go.Scatter(x=df_b["Day"], y=df_b["Running Cash"], mode='lines', name='Running Cash Balance', line=dict(color='#2ca02c', width=3)))
+    fig_b_cash.add_trace(go.Scatter(x=[df_b["Day"].min(), df_b["Day"].max()], y=[0, 0], mode='lines', name='Zero Line', line=dict(color='black', dash='solid')))
+    fig_b_cash.add_trace(go.Scatter(x=df_b["Day"], y=-df_b["Capital Deficit"], mode='none', fill='tozeroy', name='Capital Deficit (Borrowing)', fillcolor='rgba(214, 39, 40, 0.3)'))
+    fig_b_cash.update_layout(xaxis_title="Days", yaxis_title="Available Cash ($)", hovermode="x unified", height=450)
+    st.plotly_chart(fig_b_cash, use_container_width=True)
 
     # --- 3. MULTI-SCENARIO BUILDER (COLUMNS & INPUT BOXES) ---
     st.markdown("---")
