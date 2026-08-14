@@ -3156,6 +3156,30 @@ with tab9:
     b_col3.metric("Average Inventory", f"{int(base_res['avg_inventory'])} Units")
     b_col4.metric("Total System Cost", f"${base_res['total_cost']:,.0f}")
     
+    # --- CCC Breakdown Matrix ---
+    st.markdown("#### Cash Conversion Cycle (CCC) Breakdown")
+    
+    # Calculate daily COGS and CCC metrics
+    daily_cogs = avg_demand_t9 * unit_value_t9
+    dio = base_res['avg_inventory'] / avg_demand_t9 if avg_demand_t9 > 0 else 0
+    dso = credit_given_t9
+    dpo = credit_rx_t9
+    ccc = dio + dso - dpo
+    
+    # Calculate monetary values
+    avg_inv_val = base_res['avg_inventory'] * unit_value_t9
+    avg_rec_val = daily_cogs * dso
+    avg_pay_val = daily_cogs * dpo
+    net_cap_tied_up = avg_inv_val + avg_rec_val - avg_pay_val
+    
+    ccc_c1, ccc_c2, ccc_c3, ccc_c4 = st.columns(4)
+    ccc_c1.metric("Days Inventory Outstanding", f"{dio:.1f} Days", f"Value: ${avg_inv_val:,.0f}", delta_color="off")
+    ccc_c2.metric("Days Sales Outstanding", f"{dso:.1f} Days", f"Receivables: ${avg_rec_val:,.0f}", delta_color="off")
+    ccc_c3.metric("Days Payable Outstanding", f"{dpo:.1f} Days", f"Payables: ${avg_pay_val:,.0f}", delta_color="off")
+    ccc_c4.metric("Cash Conversion Cycle (CCC)", f"{ccc:.1f} Days", f"Capital Tied Up: ${net_cap_tied_up:,.0f}", delta_color="inverse")
+    
+    st.write("<br>", unsafe_allow_html=True)
+    
     t_tab1, t_tab2 = st.tabs(["📉 Baseline Inventory Movement", "💰 Baseline Cash Statement"])
     
     with t_tab1:
